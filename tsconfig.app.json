@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["chrome", "vite/client"],
+    "composite": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/__tests__/*", "src/**/*.test.ts", "src/**/*.spec.ts", "src/test/**/*"]
+}
