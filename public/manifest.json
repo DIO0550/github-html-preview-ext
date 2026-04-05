@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Chrome Extension Template",
+  "name": "GitHub PR HTML Preview",
   "version": "0.1.0",
-  "description": "Chrome Extension Template",
+  "description": "Preview HTML files directly from GitHub PR's Files changed tab",
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab"
   ],
   "background": {
     "service_worker": "assets/background.js",
@@ -13,7 +14,9 @@
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "https://github.com/*/pull/*",
+        "https://github.com/*/blob/*/*.html",
+        "https://github.com/*/blob/*/*.htm"
       ],
       "js": [
         "assets/content.js"
@@ -33,5 +36,11 @@
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     }
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/preview.html", "assets/preview.js"],
+      "matches": ["https://github.com/*"]
+    }
+  ]
 }

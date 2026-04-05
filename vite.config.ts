@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         background: resolve(__dirname, 'src/background.ts'),
         options: resolve(__dirname, 'src/options/index.html'),
+        preview: resolve(__dirname, 'src/preview.html'),
       },
       output: {
         entryFileNames: 'assets/[name].js',
