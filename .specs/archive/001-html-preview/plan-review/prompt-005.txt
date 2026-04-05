@@ -1,0 +1,14 @@
+以下の実装計画をレビューしてください。
+
+【重要】ファイルの作成・編集は一切行わないでください。レビュー結果は標準出力のみで回答してください。
+
+レビュー対象: .specs/001-html-preview/implementation-plan.md
+
+前回のレビュー (plan-review/review-004.md) で以下の指摘があり、修正済みです:
+1. メッセージ転送: background が previewStore (Map) で previewId -> html を保持。preview.html がロード後に preview-get で取得する pull 方式に変更。fetch 失敗時はエラー情報を送信。
+2. ビルド経路: vite.config.ts に preview.html を build input として追加を明記。変更ファイル一覧にも追加。
+3. <base> 注入: DOMParser で安全に処理する方式に変更。既存 <base> の上書き、大文字 HEAD、head 不在を全て処理。
+4. Blob URL 残存記述: 全て preview.html + srcdoc + message relay 方式の記述に統一。
+
+問題がなければ「問題なし」と回答してください。
+問題があれば具体的な指摘と改善案を提示してください。
