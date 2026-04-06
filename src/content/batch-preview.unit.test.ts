@@ -54,15 +54,18 @@ it('clicking the button triggers fetch for all HTML files', async () => {
     </div>
   `;
 
-  vi.mocked(fetch).mockImplementation(() =>
-    Promise.resolve(new Response('<html><head></head><body>OK</body></html>'))
-  );
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({
+    html: '<html><head></head><body>OK</body></html>',
+    error: null,
+  });
 
   const btn = createBatchPreviewButton();
   btn?.click();
 
   // Allow promises to resolve
   await vi.waitFor(() => {
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'fetch-html' })
+    );
   });
 });

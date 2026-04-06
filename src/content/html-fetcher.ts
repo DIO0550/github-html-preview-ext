@@ -12,15 +12,26 @@ export function buildPreviewHtml(rawUrl: string, html: string): string {
 }
 
 /**
+ * Fetch raw HTML via the background service worker (avoids CORS restrictions).
+ * @param url - The URL to fetch
+ * @returns Raw HTML string
+ * @throws Error if fetch fails
+ */
+async function backgroundFetch(url: string): Promise<string> {
+  const response = await chrome.runtime.sendMessage({ type: 'fetch-html', url });
+  if (response.error) throw new Error(response.error);
+  return response.html;
+}
+
+/**
  * Fetch raw HTML from GitHub and return it with `<base>` tag injected.
+ * Uses background service worker to avoid CORS issues with raw.githubusercontent.com.
  * @param rawUrl - The raw GitHub URL to fetch
  * @returns HTML string ready for preview
  * @throws Error if fetch fails
  */
 export async function fetchPreviewHtml(rawUrl: string): Promise<string> {
-  const response = await fetch(rawUrl, { credentials: 'include' });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const html = await response.text();
+  const html = await backgroundFetch(rawUrl);
   return buildPreviewHtml(rawUrl, html);
 }
 

@@ -6,7 +6,17 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'preview-store') {
+  if (message.type === 'fetch-html') {
+    // Fetch in background to avoid CORS restrictions in content script
+    fetch(message.url, { credentials: 'include' })
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then(html => sendResponse({ html, error: null }))
+      .catch(err => sendResponse({ html: null, error: err.message }));
+    return true;
+  } else if (message.type === 'preview-store') {
     previewStore.set(message.id, { html: message.html, error: message.error ?? null });
     // Auto-cleanup after TTL
     setTimeout(() => previewStore.delete(message.id), PREVIEW_TTL_MS);

@@ -3,7 +3,6 @@ import { fetchAndPreview, fetchPreviewHtml, buildPreviewHtml } from './html-fetc
 
 beforeEach(() => {
   vi.restoreAllMocks();
-  vi.mocked(fetch).mockReset();
   vi.mocked(window.open).mockReset();
   vi.mocked(chrome.runtime.sendMessage).mockReset();
   vi.mocked(chrome.runtime.getURL).mockImplementation(
@@ -20,31 +19,50 @@ it('injects <base> tag based on raw URL directory', () => {
   expect(result).toContain('<base href="https://github.com/owner/repo/raw/main/dir/"');
 });
 
-// fetchPreviewHtml
+// fetchPreviewHtml (via background fetch-html message)
 
-it('fetches HTML with credentials include', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response('<html><head></head><body>OK</body></html>'));
+it('sends fetch-html message to background', async () => {
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({
+    html: '<html><head></head><body>OK</body></html>',
+    error: null,
+  });
 
   await fetchPreviewHtml('https://github.com/owner/repo/raw/main/index.html');
 
-  expect(fetch).toHaveBeenCalledWith(
-    'https://github.com/owner/repo/raw/main/index.html',
-    { credentials: 'include' }
-  );
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: 'fetch-html',
+    url: 'https://github.com/owner/repo/raw/main/index.html',
+  });
 });
 
 it('returns HTML with <base> tag injected', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response('<html><head></head><body>OK</body></html>'));
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({
+    html: '<html><head></head><body>OK</body></html>',
+    error: null,
+  });
 
   const result = await fetchPreviewHtml('https://github.com/owner/repo/raw/main/dir/index.html');
 
   expect(result).toContain('<base href="https://github.com/owner/repo/raw/main/dir/"');
 });
 
+it('throws when background returns error', async () => {
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({
+    html: null,
+    error: 'HTTP 403',
+  });
+
+  await expect(fetchPreviewHtml('https://github.com/owner/repo/raw/main/index.html'))
+    .rejects.toThrow('HTTP 403');
+});
+
 // fetchAndPreview
 
 it('opens preview page via window.open with extension URL', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response('<html><head></head><body>OK</body></html>'));
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({
+    html: '<html><head></head><body>OK</body></html>',
+    error: null,
+  });
 
   await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
 
@@ -54,8 +72,11 @@ it('opens preview page via window.open with extension URL', async () => {
   );
 });
 
-it('sends preview-store message via chrome.runtime.sendMessage after fetch', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response('<html><head></head><body>OK</body></html>'));
+it('sends preview-store message after successful fetch', async () => {
+  // First call: fetch-html, Second call: preview-store
+  vi.mocked(chrome.runtime.sendMessage)
+    .mockResolvedValueOnce({ html: '<html><head></head><body>OK</body></html>', error: null })
+    .mockResolvedValueOnce(undefined);
 
   await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
 
@@ -68,27 +89,10 @@ it('sends preview-store message via chrome.runtime.sendMessage after fetch', asy
   );
 });
 
-it('calls window.open before fetch (synchronous popup)', async () => {
-  const callOrder: string[] = [];
-  vi.mocked(window.open).mockImplementation(() => {
-    callOrder.push('open');
-    return null;
-  });
-  vi.mocked(fetch).mockImplementation(() => {
-    callOrder.push('fetch');
-    return Promise.resolve(new Response('<html><head></head><body></body></html>'));
-  });
-
-  await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
-
-  expect(callOrder[0]).toBe('open');
-  expect(callOrder[1]).toBe('fetch');
-});
-
-// Error handling
-
-it('sends error message on network failure', async () => {
-  vi.mocked(fetch).mockRejectedValue(new Error('Failed to fetch'));
+it('sends error preview-store on fetch failure', async () => {
+  vi.mocked(chrome.runtime.sendMessage)
+    .mockResolvedValueOnce({ html: null, error: 'Failed to fetch' })
+    .mockResolvedValueOnce(undefined);
 
   await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
 
@@ -100,25 +104,4 @@ it('sends error message on network failure', async () => {
       error: 'Fetch failed: Failed to fetch',
     })
   );
-});
-
-it('sends error message on 401 response', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response('Unauthorized', { status: 401 }));
-
-  await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
-
-  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-    expect.objectContaining({
-      type: 'preview-store',
-      html: null,
-      error: expect.stringContaining('401'),
-    })
-  );
-});
-
-it('throws on non-ok response in fetchPreviewHtml', async () => {
-  vi.mocked(fetch).mockResolvedValue(new Response('Forbidden', { status: 403 }));
-
-  await expect(fetchPreviewHtml('https://github.com/owner/repo/raw/main/index.html'))
-    .rejects.toThrow('HTTP 403');
 });

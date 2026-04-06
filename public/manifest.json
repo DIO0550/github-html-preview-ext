@@ -7,6 +7,10 @@
     "storage",
     "activeTab"
   ],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://raw.githubusercontent.com/*"
+  ],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
