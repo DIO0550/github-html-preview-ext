@@ -3,6 +3,7 @@ import { fetchAndPreview, fetchPreviewHtml } from './html-fetcher';
 import { toggleInlinePreview } from './inline-preview';
 import { showInPanel } from './side-panel';
 import { getFilePath } from './github-dom';
+import { getCachedSettings } from './settings';
 
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
 const BUTTON_CLASSES = 'html-preview-btn btn btn-sm';
@@ -106,7 +107,7 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
     updateButtonState(inlineBtn, 'loading');
     try {
       const html = await fetchPreviewHtml(rawUrl);
-      toggleInlinePreview(diffContainer, html);
+      toggleInlinePreview(diffContainer, html, getCachedSettings().defaultZoom);
       updateButtonState(inlineBtn, 'idle');
     } catch (e) {
       updateButtonState(inlineBtn, 'error', e instanceof Error ? e.message : 'Preview failed');
