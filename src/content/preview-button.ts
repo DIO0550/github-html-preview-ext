@@ -81,8 +81,11 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
 
   const fileName = getFilePath(header) ?? 'preview.html';
 
-  // Find the diff container (parent of header) for inline preview
-  const diffContainer = header.closest('[id^="diff-"]') ?? header.parentElement;
+  // Find the container for inline preview:
+  // PR files: diff block, Blob page: main content wrapper
+  const diffContainer = header.closest('[id^="diff-"]')
+    ?? document.querySelector('[class*="BlobViewContent-module"], [class*="CodeView-module"], .repository-content')
+    ?? header.parentElement;
 
   // Panel button (inserted first so it appears last due to prepend)
   const panelBtn = createPreviewButton('Panel', async () => {

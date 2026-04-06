@@ -1,10 +1,35 @@
 import { createViewportToggle } from './viewport-toggle';
 
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
+const HIDDEN_MARKER = 'html-preview-hidden-code';
+
+// Selectors for GitHub's code display containers (blob page & PR diff)
+const CODE_CONTAINER_SELECTORS = [
+  '[class*="CodeBlob-module"]',
+  '[class*="BlobContent-module"]',
+  '.js-blob-code-container',
+  '.blob-code-content',
+  '.js-file-content',
+  '.diff-table',
+  'table[data-diff-anchor]',
+] as const;
 
 /**
- * Create an inline iframe preview inside a container element.
- * @param container - The DOM element to append the preview to
+ * Find the code display container within a parent element.
+ * @param container - Parent element to search within
+ * @returns The code container element, or null
+ */
+function findCodeContainer(container: Element): HTMLElement | null {
+  for (const selector of CODE_CONTAINER_SELECTORS) {
+    const el = container.querySelector<HTMLElement>(selector);
+    if (el) return el;
+  }
+  return null;
+}
+
+/**
+ * Create an inline iframe preview, replacing the code display area.
+ * @param container - The DOM element containing the code
  * @param html - HTML content to render (should already have `<base>` injected)
  * @returns The created iframe element
  */
@@ -25,37 +50,52 @@ export function createInlinePreview(
   iframe.srcdoc = html;
   iframe.style.cssText = `
     width: 100%;
-    height: 400px;
+    height: 80vh;
     border: none;
-    resize: vertical;
-    overflow: auto;
   `;
   iframe.setAttribute('sandbox', 'allow-scripts');
 
   const toggle = createViewportToggle(iframe);
   wrapper.appendChild(toggle);
   wrapper.appendChild(iframe);
-  container.appendChild(wrapper);
+
+  // Hide the code container and insert preview in its place
+  const codeContainer = findCodeContainer(container);
+  if (codeContainer) {
+    codeContainer.classList.add(HIDDEN_MARKER);
+    codeContainer.style.display = 'none';
+    codeContainer.insertAdjacentElement('afterend', wrapper);
+  } else {
+    container.appendChild(wrapper);
+  }
+
   return iframe;
 }
 
 /**
  * Toggle inline preview visibility. Creates the preview on first call,
- * hides on second, shows on third, etc.
+ * toggles between code and preview on subsequent calls.
  * @param container - The DOM element containing the preview
  * @param html - HTML content to render
  */
 export function toggleInlinePreview(container: Element, html: string): void {
   const existing = container.querySelector(`.${INLINE_WRAPPER_CLASS}`) as HTMLElement | null;
   if (existing) {
-    existing.style.display = existing.style.display === 'none' ? '' : 'none';
+    const isHidden = existing.style.display === 'none';
+    existing.style.display = isHidden ? '' : 'none';
+
+    // Toggle code container visibility inversely
+    const codeContainer = container.querySelector(`.${HIDDEN_MARKER}`) as HTMLElement | null;
+    if (codeContainer) {
+      codeContainer.style.display = isHidden ? 'none' : '';
+    }
     return;
   }
   createInlinePreview(container, html);
 }
 
 /**
- * Remove the inline preview from a container, clearing iframe srcdoc first.
+ * Remove the inline preview from a container, restoring code display.
  * @param container - The DOM element containing the preview
  */
 export function removeInlinePreview(container: Element): void {
@@ -66,4 +106,11 @@ export function removeInlinePreview(container: Element): void {
   if (iframe) iframe.srcdoc = '';
 
   wrapper.remove();
+
+  // Restore code container
+  const codeContainer = container.querySelector(`.${HIDDEN_MARKER}`) as HTMLElement | null;
+  if (codeContainer) {
+    codeContainer.classList.remove(HIDDEN_MARKER);
+    codeContainer.style.display = '';
+  }
 }
