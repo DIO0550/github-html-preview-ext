@@ -1,4 +1,5 @@
 import { createViewportToggle } from './viewport-toggle';
+import { createZoomControl } from './zoom-control';
 
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
 const HIDDEN_MARKER = 'html-preview-hidden-code';
@@ -31,11 +32,13 @@ function findCodeContainer(container: Element): HTMLElement | null {
  * Create an inline iframe preview, replacing the code display area.
  * @param container - The DOM element containing the code
  * @param html - HTML content to render (should already have `<base>` injected)
+ * @param defaultZoom - Initial zoom percentage (default 100)
  * @returns The created iframe element
  */
 export function createInlinePreview(
   container: Element,
-  html: string
+  html: string,
+  defaultZoom: number = 100
 ): HTMLIFrameElement {
   const wrapper = document.createElement('div');
   wrapper.className = INLINE_WRAPPER_CLASS;
@@ -43,7 +46,7 @@ export function createInlinePreview(
     border: 1px solid var(--color-border-default);
     border-radius: 6px;
     margin: 8px 0;
-    overflow: hidden;
+    overflow: auto;
   `;
 
   const iframe = document.createElement('iframe');
@@ -55,8 +58,12 @@ export function createInlinePreview(
   `;
   iframe.setAttribute('sandbox', 'allow-scripts');
 
-  const toggle = createViewportToggle(iframe);
-  wrapper.appendChild(toggle);
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 0;';
+  toolbar.appendChild(createViewportToggle(iframe));
+  toolbar.appendChild(createZoomControl(iframe, defaultZoom));
+
+  wrapper.appendChild(toolbar);
   wrapper.appendChild(iframe);
 
   // Hide the code container and insert preview in its place
@@ -77,8 +84,9 @@ export function createInlinePreview(
  * toggles between code and preview on subsequent calls.
  * @param container - The DOM element containing the preview
  * @param html - HTML content to render
+ * @param defaultZoom - Initial zoom percentage (default 100)
  */
-export function toggleInlinePreview(container: Element, html: string): void {
+export function toggleInlinePreview(container: Element, html: string, defaultZoom: number = 100): void {
   const existing = container.querySelector(`.${INLINE_WRAPPER_CLASS}`) as HTMLElement | null;
   if (existing) {
     const isHidden = existing.style.display === 'none';
@@ -91,7 +99,7 @@ export function toggleInlinePreview(container: Element, html: string): void {
     }
     return;
   }
-  createInlinePreview(container, html);
+  createInlinePreview(container, html, defaultZoom);
 }
 
 /**
