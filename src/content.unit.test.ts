@@ -5,6 +5,7 @@ vi.mock('./content/github-dom', () => ({
   addPreviewButtons: vi.fn(),
   findHtmlFileHeaders: vi.fn(() => []),
   getRawUrl: vi.fn(),
+  getBlobPageRawUrl: vi.fn(() => null),
 }));
 
 vi.mock('./content/batch-preview', () => ({
@@ -19,7 +20,7 @@ vi.mock('./content/html-fetcher', () => ({
   fetchPreviewHtml: vi.fn(),
 }));
 
-import { addPreviewButtons, findHtmlFileHeaders, getRawUrl } from './content/github-dom';
+import { addPreviewButtons, findHtmlFileHeaders, getRawUrl, getBlobPageRawUrl } from './content/github-dom';
 import { createInlinePreview } from './content/inline-preview';
 import { fetchPreviewHtml } from './content/html-fetcher';
 import { handlePageUpdate } from './content/page-handler';
@@ -28,6 +29,7 @@ beforeEach(() => {
   vi.mocked(addPreviewButtons).mockReset();
   vi.mocked(findHtmlFileHeaders).mockReset();
   vi.mocked(getRawUrl).mockReset();
+  vi.mocked(getBlobPageRawUrl).mockReset();
   vi.mocked(createInlinePreview).mockReset();
   vi.mocked(fetchPreviewHtml).mockReset();
   document.body.innerHTML = '';
@@ -109,6 +111,28 @@ it('passes defaultZoom to auto-preview', async () => {
       expect.anything(),
       '<html><body>Zoom</body></html>',
       150
+    );
+  });
+});
+
+it('auto-previews blob-html page when autoPreview is enabled', async () => {
+  const container = document.createElement('div');
+  container.className = 'repository-content';
+  document.body.appendChild(container);
+
+  vi.mocked(getBlobPageRawUrl).mockReturnValue('https://raw.githubusercontent.com/owner/repo/main/index.html');
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<html><body>Blob</body></html>');
+
+  handlePageUpdate('/owner/repo/blob/main/index.html', {
+    ...defaultSettings,
+    autoPreview: true,
+  });
+
+  await vi.waitFor(() => {
+    expect(createInlinePreview).toHaveBeenCalledWith(
+      container,
+      '<html><body>Blob</body></html>',
+      100
     );
   });
 });

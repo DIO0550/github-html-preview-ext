@@ -1,6 +1,6 @@
 import type { ExtensionSettings } from './settings';
 import { getPageType, extractOwnerRepo, matchesWhitelist } from './url-utils';
-import { addPreviewButtons, findHtmlFileHeaders, getRawUrl } from './github-dom';
+import { addPreviewButtons, findHtmlFileHeaders, getRawUrl, getBlobPageRawUrl } from './github-dom';
 import { createBatchPreviewButton } from './batch-preview';
 import { createInlinePreview } from './inline-preview';
 import { fetchPreviewHtml } from './html-fetcher';
@@ -34,16 +34,20 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
     }
   }
 
-  if (settings.autoPreview && pageType === 'pr-files') {
-    autoPreviewAll(settings.defaultZoom);
+  if (settings.autoPreview) {
+    if (pageType === 'pr-files') {
+      autoPreviewPrFiles(settings.defaultZoom);
+    } else if (pageType === 'blob-html') {
+      autoPreviewBlobPage(settings.defaultZoom);
+    }
   }
 }
 
 /**
- * Auto-preview all HTML files that don't already have an inline preview.
+ * Auto-preview all HTML files in a PR that don't already have an inline preview.
  * @param defaultZoom - Zoom percentage for new previews
  */
-async function autoPreviewAll(defaultZoom: number): Promise<void> {
+async function autoPreviewPrFiles(defaultZoom: number): Promise<void> {
   const headers = findHtmlFileHeaders();
   for (const header of headers) {
     const rawUrl = getRawUrl(header);
@@ -64,5 +68,33 @@ async function autoPreviewAll(defaultZoom: number): Promise<void> {
     } finally {
       autoPreviewInFlight.delete(container);
     }
+  }
+}
+
+/**
+ * Auto-preview the HTML file on a blob page.
+ * @param defaultZoom - Zoom percentage for the preview
+ */
+async function autoPreviewBlobPage(defaultZoom: number): Promise<void> {
+  const rawUrl = getBlobPageRawUrl();
+  if (!rawUrl) return;
+
+  const container = document.querySelector(
+    '[class*="BlobViewContent-module"], [class*="CodeView-module"], .repository-content'
+  );
+  if (!container) return;
+  if (container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) return;
+  if (autoPreviewInFlight.has(container)) return;
+  autoPreviewInFlight.add(container);
+
+  try {
+    const html = await fetchPreviewHtml(rawUrl);
+    if (!container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) {
+      createInlinePreview(container, html, defaultZoom);
+    }
+  } catch {
+    // Silently fail
+  } finally {
+    autoPreviewInFlight.delete(container);
   }
 }
