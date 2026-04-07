@@ -91,9 +91,11 @@ function buildRawUrlFromPr(filePath: string): string | null {
   const [, ownerRepo] = match;
 
   // Extract head branch from the PR summary "from {branch}" link
-  const branchLink = document.querySelector<HTMLAnchorElement>(
-    '[class*="BranchName"]:last-of-type, .head-ref a'
+  // There are two BranchName links: base (first) and head (last)
+  const branchLinks = document.querySelectorAll<HTMLAnchorElement>(
+    '[class*="BranchName"][href*="/tree/"], .head-ref a'
   );
+  const branchLink = branchLinks[branchLinks.length - 1];
   if (!branchLink) return null;
   const treeMatch = branchLink.getAttribute('href')?.match(/\/tree\/(.+)$/);
   if (!treeMatch) return null;
