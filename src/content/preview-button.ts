@@ -27,11 +27,19 @@ export function createPreviewButton(label: string, onClick: () => void): HTMLBut
 
 /**
  * Insert a button into a file header element.
- * Tries `.file-actions`, then `.file-info`, then appends to header itself.
+ * Tries new GitHub UI file-path section, then legacy selectors, then appends to header.
  * @param header - File header DOM element
  * @param button - Button element to insert
  */
 export function insertPreviewButton(header: Element, button: HTMLButtonElement): void {
+  // New GitHub UI: insert after the file name section
+  const filePathSection = header.querySelector('[class*="file-path-section"]');
+  if (filePathSection) {
+    filePathSection.appendChild(button);
+    return;
+  }
+
+  // Legacy selectors
   const actions = header.querySelector('.file-actions');
   if (actions) {
     actions.prepend(button);

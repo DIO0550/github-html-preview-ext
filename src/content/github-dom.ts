@@ -5,12 +5,18 @@ import { addPreviewButtonToHeader } from './preview-button';
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
 
 const FILE_HEADER_SELECTORS = [
+  // New GitHub UI (CSS modules)
+  '[class*="DiffFileHeader-module__diff-file-header"]',
+  // Legacy selectors
   '[data-tagsearch-path]',
   '.file-header[data-path]',
   '.file-header',
 ] as const;
 
 const FILE_PATH_EXTRACTORS = [
+  // New GitHub UI: <h3 class="...file-name..."><a><code>path/to/file</code></a></h3>
+  (el: Element) => el.querySelector('[class*="file-name"] code')?.textContent?.replace(/\u200E/g, '').trim() ?? null,
+  // Legacy extractors
   (el: Element) => el.getAttribute('data-tagsearch-path'),
   (el: Element) => el.getAttribute('data-path'),
   (el: Element) => el.querySelector('[title]')?.getAttribute('title') ?? null,
@@ -48,15 +54,34 @@ export function getFilePath(header: Element): string | null {
 }
 
 /**
- * Get the raw URL from a file header's "View file" link.
+ * Get the raw URL from a file header.
+ * Tries the legacy "View file" blob link first, then falls back to
+ * constructing a raw URL from the PR's head ref and file path.
  * @param header - File header DOM element
- * @returns Raw URL string, or null if no link found (e.g. deleted file)
+ * @returns Raw URL string, or null if not determinable
  */
 export function getRawUrl(header: Element): string | null {
+  // Legacy: look for a direct blob link
   const link = header.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
-  if (!link) return null;
-  // Use .href property for absolute URL (not getAttribute which returns relative)
-  return convertBlobToRawUrl(link.href);
+  if (link) return convertBlobToRawUrl(link.href);
+
+  // New GitHub UI: construct raw URL from PR head ref + file path
+  const filePath = getFilePath(header);
+  if (!filePath) return null;
+  return buildRawUrlFromPr(filePath);
+}
+
+/**
+ * Build a raw URL for a file in the current PR using the head ref.
+ * Uses the URL pattern: /owner/repo/raw/refs/pull/N/head/path
+ * @param filePath - Relative file path within the repository
+ * @returns Absolute raw URL, or null if not on a PR page
+ */
+function buildRawUrlFromPr(filePath: string): string | null {
+  const match = location.pathname.match(/^\/([^/]+\/[^/]+)\/pull\/(\d+)/);
+  if (!match) return null;
+  const [, ownerRepo, prNumber] = match;
+  return `${location.origin}/${ownerRepo}/raw/refs/pull/${prNumber}/head/${filePath}`;
 }
 
 /**
