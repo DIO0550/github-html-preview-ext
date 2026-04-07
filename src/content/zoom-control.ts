@@ -22,8 +22,6 @@ export function applyZoom(iframe: HTMLIFrameElement, zoomPercent: number): void 
   const scale = clamped / 100;
   iframe.style.transform = `scale(${scale})`;
   iframe.style.transformOrigin = 'top left';
-  // Wrap iframe height to avoid clipping; width is managed by viewport toggle
-  iframe.style.height = `${80 / scale}vh`;
 }
 
 /**

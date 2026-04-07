@@ -36,7 +36,7 @@ it('sets iframe sandbox to allow-scripts', () => {
 
   const iframe = createInlinePreview(container, '<html><body></body></html>');
 
-  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
 });
 
 // toggleInlinePreview

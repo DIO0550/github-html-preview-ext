@@ -16,6 +16,43 @@ const CODE_CONTAINER_SELECTORS = [
 ] as const;
 
 /**
+ * Auto-resize an iframe's height to match its content, eliminating internal scroll.
+ * Uses contentDocument.scrollHeight read via allow-same-origin sandbox.
+ * Also observes DOM mutations inside the iframe to handle dynamic content.
+ * @param iframe - The iframe element to auto-resize
+ */
+function setupAutoResize(iframe: HTMLIFrameElement): void {
+  const syncHeight = () => {
+    try {
+      const doc = iframe.contentDocument;
+      if (doc?.documentElement) {
+        const h = doc.documentElement.scrollHeight;
+        if (h > 0) {
+          iframe.style.height = `${h}px`;
+        }
+      }
+    } catch {
+      // Cross-origin access denied — fall back to initial fixed height
+    }
+  };
+
+  iframe.addEventListener('load', () => {
+    syncHeight();
+    // Watch for dynamic content changes inside the iframe
+    try {
+      const doc = iframe.contentDocument;
+      if (doc?.body) {
+        new MutationObserver(syncHeight).observe(doc.body, {
+          childList: true, subtree: true, attributes: true,
+        });
+      }
+    } catch {
+      // ignore
+    }
+  });
+}
+
+/**
  * Find the code display container within a parent element.
  * @param container - Parent element to search within
  * @returns The code container element, or null
@@ -56,7 +93,8 @@ export function createInlinePreview(
     height: 80vh;
     border: none;
   `;
-  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  setupAutoResize(iframe);
 
   const toolbar = document.createElement('div');
   toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 0;';

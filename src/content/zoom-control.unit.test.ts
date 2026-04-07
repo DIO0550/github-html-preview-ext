@@ -25,11 +25,6 @@ it('sets transform-origin to top left', () => {
   expect(iframe.style.transformOrigin).toBe('top left');
 });
 
-it('adjusts iframe height inversely to scale', () => {
-  const iframe = document.createElement('iframe');
-  applyZoom(iframe, 200);
-  expect(iframe.style.height).toBe('40vh');
-});
 
 test.each([
   [250, 200],

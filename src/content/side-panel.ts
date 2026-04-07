@@ -67,7 +67,7 @@ export function createSidePanel(): HTMLElement {
   // Iframe
   const iframe = document.createElement('iframe');
   iframe.id = PANEL_IFRAME_ID;
-  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
   iframe.style.cssText = 'flex: 1; border: none; width: 100%;';
 
   const toolbar = document.createElement('div');

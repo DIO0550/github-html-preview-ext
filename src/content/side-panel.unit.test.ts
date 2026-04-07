@@ -24,7 +24,7 @@ it('contains an iframe with sandbox allow-scripts', () => {
   createSidePanel();
   const iframe = document.querySelector('#html-preview-panel iframe');
   expect(iframe).not.toBeNull();
-  expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts');
+  expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
 });
 
 // showInPanel
