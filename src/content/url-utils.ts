@@ -82,7 +82,7 @@ export function matchesWhitelist(ownerRepo: string, allowedRepos: string[]): boo
  * @returns Page type: `'pr-files'`, `'blob-html'`, or `'unknown'`
  */
 export function getPageType(path: string): PageType {
-  if (/\/pull\/\d+\/files/.test(path)) return 'pr-files';
+  if (/\/pull\/\d+\/(files|changes)/.test(path)) return 'pr-files';
   if (/\/blob\/.*\.html?$/i.test(path)) return 'blob-html';
   return 'unknown';
 }

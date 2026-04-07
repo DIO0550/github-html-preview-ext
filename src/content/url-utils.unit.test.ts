@@ -71,6 +71,7 @@ it('preserves DOCTYPE', () => {
 
 test.each([
   ['/owner/repo/pull/123/files', 'pr-files'],
+  ['/owner/repo/pull/123/changes', 'pr-files'],
   ['/owner/repo/blob/main/index.html', 'blob-html'],
   ['/owner/repo/tree/main', 'unknown'],
   ['/owner/repo/pull/123', 'unknown'],
