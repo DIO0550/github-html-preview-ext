@@ -72,16 +72,27 @@ export function getRawUrl(header: Element): string | null {
 }
 
 /**
- * Build a raw URL for a file in the current PR using the head ref.
- * Uses the URL pattern: /owner/repo/raw/refs/pull/N/head/path
+ * Build a raw URL for a file in the current PR using the head branch name.
+ * Extracts the branch from the PR summary's "from {branch}" link,
+ * then constructs: /owner/repo/raw/{branch}/{path}
  * @param filePath - Relative file path within the repository
- * @returns Absolute raw URL, or null if not on a PR page
+ * @returns Absolute raw URL, or null if branch not found
  */
 function buildRawUrlFromPr(filePath: string): string | null {
-  const match = location.pathname.match(/^\/([^/]+\/[^/]+)\/pull\/(\d+)/);
+  const match = location.pathname.match(/^\/([^/]+\/[^/]+)\/pull\//);
   if (!match) return null;
-  const [, ownerRepo, prNumber] = match;
-  return `${location.origin}/${ownerRepo}/raw/refs/pull/${prNumber}/head/${filePath}`;
+  const [, ownerRepo] = match;
+
+  // Extract head branch from the PR summary "from {branch}" link
+  const branchLink = document.querySelector<HTMLAnchorElement>(
+    '[class*="BranchName"]:last-of-type, .head-ref a'
+  );
+  if (!branchLink) return null;
+  const treeMatch = branchLink.getAttribute('href')?.match(/\/tree\/(.+)$/);
+  if (!treeMatch) return null;
+  const branch = treeMatch[1];
+
+  return `${location.origin}/${ownerRepo}/raw/${branch}/${filePath}`;
 }
 
 /**
