@@ -1,5 +1,5 @@
 import { it, expect, test } from 'vitest';
-import { convertBlobToRawUrl, isHtmlFile, injectBaseTag, getPageType } from './url-utils';
+import { convertBlobToRawUrl, isHtmlFile, injectBaseTag, getPageType, extractOwnerRepo, matchesWhitelist } from './url-utils';
 
 // convertBlobToRawUrl
 
@@ -71,9 +71,56 @@ it('preserves DOCTYPE', () => {
 
 test.each([
   ['/owner/repo/pull/123/files', 'pr-files'],
+  ['/owner/repo/pull/123/changes', 'pr-files'],
   ['/owner/repo/blob/main/index.html', 'blob-html'],
   ['/owner/repo/tree/main', 'unknown'],
   ['/owner/repo/pull/123', 'unknown'],
 ])('getPageType(%s) returns %s', (input, expected) => {
   expect(getPageType(input)).toBe(expected);
+});
+
+// extractOwnerRepo
+
+test.each([
+  ['/owner/repo/pull/123/files', 'owner/repo'],
+  ['/owner/repo/blob/main/file.html', 'owner/repo'],
+  ['/org-name/my-repo/pull/1/files', 'org-name/my-repo'],
+])('extractOwnerRepo(%s) returns %s', (input, expected) => {
+  expect(extractOwnerRepo(input)).toBe(expected);
+});
+
+test.each([
+  ['/', null],
+  ['/owner', null],
+  ['', null],
+])('extractOwnerRepo(%s) returns null', (input, expected) => {
+  expect(extractOwnerRepo(input)).toBe(expected);
+});
+
+// matchesWhitelist
+
+it('matches exact owner/repo', () => {
+  expect(matchesWhitelist('owner/repo', ['owner/repo'])).toBe(true);
+});
+
+it('matches wildcard owner/*', () => {
+  expect(matchesWhitelist('owner/repo', ['owner/*'])).toBe(true);
+});
+
+it('returns false when not in list', () => {
+  expect(matchesWhitelist('owner/repo', ['other/repo'])).toBe(false);
+});
+
+it('returns false for empty list', () => {
+  expect(matchesWhitelist('owner/repo', [])).toBe(false);
+});
+
+it('matches case-insensitively', () => {
+  expect(matchesWhitelist('Owner/Repo', ['owner/repo'])).toBe(true);
+  expect(matchesWhitelist('owner/repo', ['Owner/*'])).toBe(true);
+});
+
+it('does not support */* or partial wildcards', () => {
+  expect(matchesWhitelist('owner/repo', ['*/*'])).toBe(false);
+  expect(matchesWhitelist('owner/repo-foo', ['owner/repo-*'])).toBe(false);
 });

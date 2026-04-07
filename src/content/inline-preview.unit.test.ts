@@ -36,7 +36,7 @@ it('sets iframe sandbox to allow-scripts', () => {
 
   const iframe = createInlinePreview(container, '<html><body></body></html>');
 
-  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
 });
 
 // toggleInlinePreview
@@ -93,4 +93,34 @@ it('clears iframe srcdoc before removal', () => {
   removeInlinePreview(container);
 
   expect(iframe.srcdoc).toBe('');
+});
+
+// zoom integration
+
+it('creates zoom control in the toolbar when defaultZoom is provided', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  createInlinePreview(container, '<html><body>Zoom</body></html>', 150);
+
+  const zoomControl = container.querySelector('.html-preview-zoom-control');
+  expect(zoomControl).not.toBeNull();
+});
+
+it('applies default zoom to iframe when defaultZoom is provided', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  const iframe = createInlinePreview(container, '<html><body>Zoom</body></html>', 150);
+
+  expect(iframe.style.transform).toBe('scale(1.5)');
+});
+
+it('defaults to 100% zoom when no defaultZoom provided', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  const iframe = createInlinePreview(container, '<html><body>No zoom</body></html>');
+
+  expect(iframe.style.transform).toBe('scale(1)');
 });

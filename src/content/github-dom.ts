@@ -5,12 +5,18 @@ import { addPreviewButtonToHeader } from './preview-button';
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
 
 const FILE_HEADER_SELECTORS = [
+  // New GitHub UI (CSS modules)
+  '[class*="DiffFileHeader-module__diff-file-header"]',
+  // Legacy selectors
   '[data-tagsearch-path]',
   '.file-header[data-path]',
   '.file-header',
 ] as const;
 
 const FILE_PATH_EXTRACTORS = [
+  // New GitHub UI: <h3 class="...file-name..."><a><code>path/to/file</code></a></h3>
+  (el: Element) => el.querySelector('[class*="file-name"] code')?.textContent?.replace(/\u200E/g, '').trim() ?? null,
+  // Legacy extractors
   (el: Element) => el.getAttribute('data-tagsearch-path'),
   (el: Element) => el.getAttribute('data-path'),
   (el: Element) => el.querySelector('[title]')?.getAttribute('title') ?? null,
@@ -48,15 +54,54 @@ export function getFilePath(header: Element): string | null {
 }
 
 /**
- * Get the raw URL from a file header's "View file" link.
+ * Get the raw URL from a file header.
+ * Tries the legacy "View file" blob link first, then falls back to
+ * constructing a raw URL from the PR's head ref and file path.
  * @param header - File header DOM element
- * @returns Raw URL string, or null if no link found (e.g. deleted file)
+ * @returns Raw URL string, or null if not determinable
  */
 export function getRawUrl(header: Element): string | null {
-  const link = header.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
-  if (!link) return null;
-  // Use .href property for absolute URL (not getAttribute which returns relative)
-  return convertBlobToRawUrl(link.href);
+  // Look for a blob link in the header itself
+  const headerLink = header.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
+  if (headerLink) return convertBlobToRawUrl(headerLink.href);
+
+  // New GitHub UI: "View file" link lives in the kebab menu inside the diff container
+  const diffContainer = header.closest('[id^="diff-"]') ?? header.parentElement;
+  if (diffContainer) {
+    const viewFileLink = diffContainer.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
+    if (viewFileLink) return convertBlobToRawUrl(viewFileLink.href);
+  }
+
+  // Fallback: construct raw URL from PR head branch + file path
+  const filePath = getFilePath(header);
+  if (!filePath) return null;
+  return buildRawUrlFromPr(filePath);
+}
+
+/**
+ * Build a raw URL for a file in the current PR using the head branch name.
+ * Extracts the branch from the PR summary's "from {branch}" link,
+ * then constructs: /owner/repo/raw/{branch}/{path}
+ * @param filePath - Relative file path within the repository
+ * @returns Absolute raw URL, or null if branch not found
+ */
+function buildRawUrlFromPr(filePath: string): string | null {
+  const match = location.pathname.match(/^\/([^/]+\/[^/]+)\/pull\//);
+  if (!match) return null;
+  const [, ownerRepo] = match;
+
+  // Extract head branch from the PR summary "from {branch}" link
+  // There are two BranchName links: base (first) and head (last)
+  const branchLinks = document.querySelectorAll<HTMLAnchorElement>(
+    '[class*="BranchName"][href*="/tree/"], .head-ref a'
+  );
+  const branchLink = branchLinks[branchLinks.length - 1];
+  if (!branchLink) return null;
+  const treeMatch = branchLink.getAttribute('href')?.match(/\/tree\/(.+)$/);
+  if (!treeMatch) return null;
+  const branch = treeMatch[1];
+
+  return `${location.origin}/${ownerRepo}/raw/${branch}/${filePath}`;
 }
 
 /**

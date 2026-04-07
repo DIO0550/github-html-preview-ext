@@ -1,6 +1,7 @@
 import { findHtmlFileHeaders, getRawUrl } from './github-dom';
 import { fetchPreviewHtml } from './html-fetcher';
 import { createInlinePreview } from './inline-preview';
+import { getCachedSettings } from './settings';
 
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
 
@@ -36,7 +37,7 @@ async function previewAllHtml(): Promise<void> {
 
     try {
       const html = await fetchPreviewHtml(rawUrl);
-      createInlinePreview(container, html);
+      createInlinePreview(container, html, getCachedSettings().defaultZoom);
     } catch {
       // Continue with remaining files on per-file failure
     }

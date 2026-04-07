@@ -46,12 +46,43 @@ export function injectBaseTag(html: string, baseUrl: string): string {
 }
 
 /**
+ * Extract the owner/repo pair from a GitHub URL path.
+ * @param path - URL pathname (e.g. `/owner/repo/pull/123/files`)
+ * @returns `"owner/repo"` string, or null if path has fewer than 2 segments
+ */
+export function extractOwnerRepo(path: string): string | null {
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length < 2) return null;
+  return `${segments[0]}/${segments[1]}`;
+}
+
+/**
+ * Check whether an owner/repo matches any entry in the whitelist.
+ * Supports exact match (`owner/repo`) and org wildcard (`owner/*`).
+ * Comparison is case-insensitive.
+ * @param ownerRepo - The `"owner/repo"` string to check
+ * @param allowedRepos - Whitelist entries
+ * @returns true if the repo matches any whitelist entry
+ */
+export function matchesWhitelist(ownerRepo: string, allowedRepos: string[]): boolean {
+  const normalized = ownerRepo.toLowerCase();
+  const [owner] = normalized.split('/');
+  return allowedRepos.some((entry) => {
+    const normalizedEntry = entry.toLowerCase();
+    if (normalizedEntry === `${owner}/*` && !normalizedEntry.startsWith('*')) {
+      return true;
+    }
+    return normalizedEntry === normalized;
+  });
+}
+
+/**
  * Determine the GitHub page type from a URL path.
  * @param path - URL pathname (e.g. `/owner/repo/pull/123/files`)
  * @returns Page type: `'pr-files'`, `'blob-html'`, or `'unknown'`
  */
 export function getPageType(path: string): PageType {
-  if (/\/pull\/\d+\/files/.test(path)) return 'pr-files';
+  if (/\/pull\/\d+\/(files|changes)/.test(path)) return 'pr-files';
   if (/\/blob\/.*\.html?$/i.test(path)) return 'blob-html';
   return 'unknown';
 }

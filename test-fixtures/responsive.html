@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Responsive Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; color: #333; }
+    h1 { color: #0969da; font-size: 1.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1rem 0; }
+    .card {
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      padding: 1rem;
+      background: linear-gradient(135deg, #f6f8fa, #fff);
+    }
+    .card h3 { margin-top: 0; color: #0969da; }
+    .badge { display: inline-block; background: #ddf4ff; color: #0969da; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; }
+    .info { background: #fff8c5; border: 1px solid #d4a72c; border-radius: 6px; padding: 0.75rem; margin-top: 1rem; }
+
+    @media (max-width: 500px) {
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Responsive Layout Test</h1>
+  <p>Use the <strong>Mobile / Tablet / Desktop</strong> viewport buttons to test responsive behavior.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Card 1</h3>
+      <span class="badge">Desktop</span>
+      <p>This card should reflow based on viewport width.</p>
+    </div>
+    <div class="card">
+      <h3>Card 2</h3>
+      <span class="badge">Tablet</span>
+      <p>On tablet width, cards should stack in fewer columns.</p>
+    </div>
+    <div class="card">
+      <h3>Card 3</h3>
+      <span class="badge">Mobile</span>
+      <p>On mobile width, all cards should be single column.</p>
+    </div>
+    <div class="card">
+      <h3>Card 4</h3>
+      <span class="badge">Zoom</span>
+      <p>Try zooming in/out with the zoom controls.</p>
+    </div>
+  </div>
+
+  <div class="info">
+    <strong>Viewport toggle test:</strong> Switch between Mobile (375px), Tablet (768px), Desktop (100%) to verify layout changes.
+  </div>
+</body>
+</html>

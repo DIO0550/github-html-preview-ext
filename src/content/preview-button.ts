@@ -3,6 +3,7 @@ import { fetchAndPreview, fetchPreviewHtml } from './html-fetcher';
 import { toggleInlinePreview } from './inline-preview';
 import { showInPanel } from './side-panel';
 import { getFilePath } from './github-dom';
+import { getCachedSettings } from './settings';
 
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
 const BUTTON_CLASSES = 'html-preview-btn btn btn-sm';
@@ -26,11 +27,19 @@ export function createPreviewButton(label: string, onClick: () => void): HTMLBut
 
 /**
  * Insert a button into a file header element.
- * Tries `.file-actions`, then `.file-info`, then appends to header itself.
+ * Tries new GitHub UI file-path section, then legacy selectors, then appends to header.
  * @param header - File header DOM element
  * @param button - Button element to insert
  */
 export function insertPreviewButton(header: Element, button: HTMLButtonElement): void {
+  // New GitHub UI: insert after the file name section
+  const filePathSection = header.querySelector('[class*="file-path-section"]');
+  if (filePathSection) {
+    filePathSection.appendChild(button);
+    return;
+  }
+
+  // Legacy selectors
   const actions = header.querySelector('.file-actions');
   if (actions) {
     actions.prepend(button);
@@ -106,7 +115,7 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
     updateButtonState(inlineBtn, 'loading');
     try {
       const html = await fetchPreviewHtml(rawUrl);
-      toggleInlinePreview(diffContainer, html);
+      toggleInlinePreview(diffContainer, html, getCachedSettings().defaultZoom);
       updateButtonState(inlineBtn, 'idle');
     } catch (e) {
       updateButtonState(inlineBtn, 'error', e instanceof Error ? e.message : 'Preview failed');

@@ -24,7 +24,7 @@ it('contains an iframe with sandbox allow-scripts', () => {
   createSidePanel();
   const iframe = document.querySelector('#html-preview-panel iframe');
   expect(iframe).not.toBeNull();
-  expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts');
+  expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
 });
 
 // showInPanel
@@ -58,6 +58,12 @@ it('restores document.body.style.marginRight', () => {
   showInPanel('<html><body>Hello</body></html>', 'index.html');
   closeSidePanel();
   expect(document.body.style.marginRight).toBe('');
+});
+
+it('contains zoom control in toolbar', () => {
+  createSidePanel();
+  const zoomControl = document.querySelector('.html-preview-zoom-control');
+  expect(zoomControl).not.toBeNull();
 });
 
 it('close button triggers panel removal', () => {
