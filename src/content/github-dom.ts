@@ -61,11 +61,18 @@ export function getFilePath(header: Element): string | null {
  * @returns Raw URL string, or null if not determinable
  */
 export function getRawUrl(header: Element): string | null {
-  // Legacy: look for a direct blob link
-  const link = header.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
-  if (link) return convertBlobToRawUrl(link.href);
+  // Look for a blob link in the header itself
+  const headerLink = header.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
+  if (headerLink) return convertBlobToRawUrl(headerLink.href);
 
-  // New GitHub UI: construct raw URL from PR head ref + file path
+  // New GitHub UI: "View file" link lives in the kebab menu inside the diff container
+  const diffContainer = header.closest('[id^="diff-"]') ?? header.parentElement;
+  if (diffContainer) {
+    const viewFileLink = diffContainer.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
+    if (viewFileLink) return convertBlobToRawUrl(viewFileLink.href);
+  }
+
+  // Fallback: construct raw URL from PR head branch + file path
   const filePath = getFilePath(header);
   if (!filePath) return null;
   return buildRawUrlFromPr(filePath);
