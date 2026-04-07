@@ -1,4 +1,6 @@
 import { createViewportToggle } from './viewport-toggle';
+import { createZoomControl } from './zoom-control';
+import { getCachedSettings } from './settings';
 
 const PANEL_ID = 'html-preview-panel';
 const PANEL_IFRAME_ID = 'html-preview-panel-iframe';
@@ -68,11 +70,14 @@ export function createSidePanel(): HTMLElement {
   iframe.setAttribute('sandbox', 'allow-scripts');
   iframe.style.cssText = 'flex: 1; border: none; width: 100%;';
 
-  const toggle = createViewportToggle(iframe);
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 8px;';
+  toolbar.appendChild(createViewportToggle(iframe));
+  toolbar.appendChild(createZoomControl(iframe, getCachedSettings().defaultZoom));
 
   panel.appendChild(resizeHandle);
   panel.appendChild(header);
-  panel.appendChild(toggle);
+  panel.appendChild(toolbar);
   panel.appendChild(iframe);
   document.body.appendChild(panel);
 

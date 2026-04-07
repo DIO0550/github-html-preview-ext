@@ -60,6 +60,12 @@ it('restores document.body.style.marginRight', () => {
   expect(document.body.style.marginRight).toBe('');
 });
 
+it('contains zoom control in toolbar', () => {
+  createSidePanel();
+  const zoomControl = document.querySelector('.html-preview-zoom-control');
+  expect(zoomControl).not.toBeNull();
+});
+
 it('close button triggers panel removal', () => {
   showInPanel('<html><body>Hello</body></html>', 'index.html');
   const closeBtn = document.getElementById('html-preview-panel-close');
