@@ -15,39 +15,74 @@ const CODE_CONTAINER_SELECTORS = [
   'table[data-diff-anchor]',
 ] as const;
 
+const OBSERVER_OPTIONS: MutationObserverInit = {
+  childList: true,
+  subtree: true,
+  attributes: true, // required: body.style.zoom mutations arrive as attribute changes
+};
+
 /**
- * Auto-resize an iframe's height to match its content, eliminating internal scroll.
- * Uses contentDocument.scrollHeight read via allow-same-origin sandbox.
- * Also observes DOM mutations inside the iframe to handle dynamic content.
+ * Module-scope map of iframe → active MutationObserver. Ensures each iframe
+ * has at most one observer, so load re-fires (srcdoc swap) can disconnect the
+ * previous observer before re-attaching to the new body. See implementation
+ * plan §4.2 and review-004 指摘 #1.
+ */
+const iframeObservers = new WeakMap<HTMLIFrameElement, MutationObserver>();
+
+/**
+ * Auto-resize an iframe's outer height so it matches content scrollHeight
+ * normalized to the 100% baseline (i.e. `scrollHeight / scale`). Height
+ * recalculation triggers are:
+ *   (A) iframe `load` (initial and srcdoc-triggered re-loads)
+ *   (B) MutationObserver firing on contentDocument.body
+ * `applyZoom` itself never calls syncHeight directly — it mutates
+ * `body.style.zoom`, and that attribute mutation reaches the observer, which
+ * then calls syncHeight. This keeps the iframe outer frame fixed regardless
+ * of the zoom level. Must be registered **after** zoom-control's persistent
+ * load listener so that on each load, zoom is reapplied before syncHeight
+ * reads body.style.zoom.
  * @param iframe - The iframe element to auto-resize
  */
 function setupAutoResize(iframe: HTMLIFrameElement): void {
-  const syncHeight = () => {
+  const syncHeight = (): void => {
     try {
       const doc = iframe.contentDocument;
-      if (doc?.documentElement) {
-        const h = doc.documentElement.scrollHeight;
-        if (h > 0) {
-          iframe.style.height = `${h}px`;
-        }
-      }
+      if (!doc?.documentElement) return;
+      const raw = doc.documentElement.scrollHeight;
+      // `raw === 0` is a valid result — write '0px' to avoid stale values.
+      const rawNormalized = raw < 0 ? 0 : raw;
+      const scaleStr = doc.body?.style.zoom || iframe.dataset.htmlPreviewZoom || '1';
+      const scale = Number(scaleStr) || 1;
+      const base = rawNormalized / scale;
+      iframe.style.height = `${base}px`;
+      iframe.dataset.htmlPreviewBaseHeight = String(base);
     } catch {
-      // Cross-origin access denied — fall back to initial fixed height
+      // cross-origin: contentDocument getter / access may throw
     }
   };
 
   iframe.addEventListener('load', () => {
+    // Disconnect the previous observer **before** touching contentDocument,
+    // so that a subsequent load firing with a throwing getter still cleans
+    // up the old observer. (review-006 指摘 #1)
+    const prev = iframeObservers.get(iframe);
+    if (prev) {
+      prev.disconnect();
+      iframeObservers.delete(iframe);
+    }
+
+    // zoom-control's persistent load listener is registered before this one
+    // (via the call order in createInlinePreview), so body.style.zoom has
+    // already been re-applied by the time we run.
     syncHeight();
-    // Watch for dynamic content changes inside the iframe
     try {
       const doc = iframe.contentDocument;
-      if (doc?.body) {
-        new MutationObserver(syncHeight).observe(doc.body, {
-          childList: true, subtree: true, attributes: true,
-        });
-      }
+      if (!doc?.body) return;
+      const observer = new MutationObserver(syncHeight);
+      observer.observe(doc.body, OBSERVER_OPTIONS);
+      iframeObservers.set(iframe, observer);
     } catch {
-      // ignore
+      // cross-origin
     }
   });
 }
@@ -67,6 +102,10 @@ function findCodeContainer(container: Element): HTMLElement | null {
 
 /**
  * Create an inline iframe preview, replacing the code display area.
+ * Call order inside this function is significant: `createZoomControl` must
+ * run before `setupAutoResize`, so that the zoom-control persistent load
+ * listener is registered first and re-applies body.style.zoom before the
+ * inline-preview load listener runs syncHeight. (review-003 指摘 #1)
  * @param container - The DOM element containing the code
  * @param html - HTML content to render (should already have `<base>` injected)
  * @param defaultZoom - Initial zoom percentage (default 100)
@@ -94,12 +133,15 @@ export function createInlinePreview(
     border: none;
   `;
   iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-  setupAutoResize(iframe);
 
   const toolbar = document.createElement('div');
   toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 0;';
   toolbar.appendChild(createViewportToggle(iframe));
+  // Order matters: createZoomControl registers the persistent load listener
+  // that reapplies body.style.zoom; setupAutoResize must be registered after
+  // so its load listener runs after zoom reapplication.
   toolbar.appendChild(createZoomControl(iframe, defaultZoom));
+  setupAutoResize(iframe);
 
   wrapper.appendChild(toolbar);
   wrapper.appendChild(iframe);
@@ -142,6 +184,8 @@ export function toggleInlinePreview(container: Element, html: string, defaultZoo
 
 /**
  * Remove the inline preview from a container, restoring code display.
+ * Also disconnects and removes any MutationObserver previously registered
+ * on the iframe via setupAutoResize (review-005 指摘 #1).
  * @param container - The DOM element containing the preview
  */
 export function removeInlinePreview(container: Element): void {
@@ -149,7 +193,14 @@ export function removeInlinePreview(container: Element): void {
   if (!wrapper) return;
 
   const iframe = wrapper.querySelector('iframe');
-  if (iframe) iframe.srcdoc = '';
+  if (iframe) {
+    const observer = iframeObservers.get(iframe);
+    if (observer) {
+      observer.disconnect();
+      iframeObservers.delete(iframe);
+    }
+    iframe.srcdoc = '';
+  }
 
   wrapper.remove();
 
