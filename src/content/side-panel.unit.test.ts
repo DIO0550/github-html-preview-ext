@@ -1,5 +1,28 @@
 import { it, expect, beforeEach } from 'vitest';
 import { createSidePanel, showInPanel, closeSidePanel } from './side-panel';
+import { applyZoom } from './zoom-control';
+
+/**
+ * Create a fake Document with a real body for zoom assertions.
+ * @returns A fake document
+ */
+function createFakeDoc(): Document {
+  const body = document.createElement('body');
+  const documentElement = { get scrollHeight(): number { return 500; } };
+  return { body, documentElement } as unknown as Document;
+}
+
+/**
+ * Attach a fake contentDocument getter to an iframe.
+ * @param iframe - Target iframe
+ * @param doc - Fake document to expose
+ */
+function attachFakeDoc(iframe: HTMLIFrameElement, doc: Document): void {
+  Object.defineProperty(iframe, 'contentDocument', {
+    configurable: true,
+    get: () => doc,
+  });
+}
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -72,4 +95,45 @@ it('close button triggers panel removal', () => {
   expect(closeBtn).not.toBeNull();
   closeBtn?.click();
   expect(document.getElementById('html-preview-panel')).toBeNull();
+});
+
+// zoom retention regression (review 指摘 #2)
+
+it('retains body.style.zoom after showInPanel is called a second time (srcdoc swap)', () => {
+  showInPanel('<html><body>A</body></html>', 'a.html');
+  const iframe = document.querySelector('#html-preview-panel iframe') as HTMLIFrameElement;
+
+  // First load: attach fake doc A and fire load; then set zoom to 150%.
+  const docA = createFakeDoc();
+  attachFakeDoc(iframe, docA);
+  iframe.dispatchEvent(new Event('load'));
+  applyZoom(iframe, 150);
+  expect(docA.body.style.zoom).toBe('1.5');
+
+  // Second showInPanel swaps srcdoc → load re-fires on a new document.
+  showInPanel('<html><body>B</body></html>', 'b.html');
+  const docB = createFakeDoc();
+  attachFakeDoc(iframe, docB);
+  iframe.dispatchEvent(new Event('load'));
+
+  expect(docB.body.style.zoom).toBe('1.5');
+  expect(iframe.dataset.htmlPreviewZoom).toBe('1.5');
+});
+
+it('retains dataset.htmlPreviewZoom across srcdoc swaps', () => {
+  showInPanel('<html><body>A</body></html>', 'a.html');
+  const iframe = document.querySelector('#html-preview-panel iframe') as HTMLIFrameElement;
+  const docA = createFakeDoc();
+  attachFakeDoc(iframe, docA);
+  iframe.dispatchEvent(new Event('load'));
+  applyZoom(iframe, 75);
+  expect(iframe.dataset.htmlPreviewZoom).toBe('0.75');
+
+  showInPanel('<html><body>B</body></html>', 'b.html');
+  const docB = createFakeDoc();
+  attachFakeDoc(iframe, docB);
+  iframe.dispatchEvent(new Event('load'));
+
+  expect(iframe.dataset.htmlPreviewZoom).toBe('0.75');
+  expect(docB.body.style.zoom).toBe('0.75');
 });
