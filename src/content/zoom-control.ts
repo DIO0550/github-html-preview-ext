@@ -2,6 +2,9 @@ const MIN_ZOOM = 25;
 const MAX_ZOOM = 200;
 const ZOOM_STEP = 10;
 
+const ZOOM_DATASET_KEY = 'htmlPreviewZoom';
+const ZOOM_LISTENER_DATASET_KEY = 'htmlPreviewZoomListener';
+
 /**
  * Clamp a zoom value to the valid range (25-200%).
  * @param value - Raw zoom percentage
@@ -12,16 +15,53 @@ function clampZoom(value: number): number {
 }
 
 /**
- * Apply a zoom level to an iframe using CSS transform.
- * Values outside 25-200% are clamped.
+ * Apply the current persisted zoom scale from dataset to the iframe's body
+ * via `contentDocument.body.style.zoom`. Guards against null contentDocument
+ * (not yet loaded) and contentDocument getter throw (cross-origin).
+ * @param iframe - The iframe whose body should receive the zoom
+ */
+function applyZoomToBody(iframe: HTMLIFrameElement): void {
+  try {
+    const doc = iframe.contentDocument;
+    if (!doc?.body) return;
+    const scale = iframe.dataset[ZOOM_DATASET_KEY];
+    if (!scale) return;
+    doc.body.style.zoom = scale;
+  } catch {
+    // cross-origin: contentDocument getter may throw
+  }
+}
+
+/**
+ * Register a persistent `load` listener that re-applies zoom on every load
+ * (including `srcdoc` replacement). Guarded against duplicate registration
+ * via a dataset flag.
+ * @param iframe - The iframe to attach the persistent load listener to
+ */
+function ensureLoadListener(iframe: HTMLIFrameElement): void {
+  if (iframe.dataset[ZOOM_LISTENER_DATASET_KEY] === '1') return;
+  iframe.dataset[ZOOM_LISTENER_DATASET_KEY] = '1';
+  iframe.addEventListener('load', () => {
+    applyZoomToBody(iframe);
+  });
+}
+
+/**
+ * Apply a zoom level to an iframe by setting `contentDocument.body.style.zoom`.
+ * The iframe's outer frame size is unchanged; only the content is scaled.
+ * The scale is persisted on `iframe.dataset.htmlPreviewZoom` so it survives
+ * `srcdoc` reload via a persistent load listener.
  * @param iframe - The iframe element to zoom
- * @param zoomPercent - Zoom percentage (e.g. 100 = no zoom)
+ * @param zoomPercent - Zoom percentage (e.g. 100 = no zoom). Clamped to 25-200.
  */
 export function applyZoom(iframe: HTMLIFrameElement, zoomPercent: number): void {
   const clamped = clampZoom(zoomPercent);
   const scale = clamped / 100;
-  iframe.style.transform = `scale(${scale})`;
-  iframe.style.transformOrigin = 'top left';
+  iframe.dataset[ZOOM_DATASET_KEY] = String(scale);
+  ensureLoadListener(iframe);
+  // Clear legacy transform side effect from previous implementation
+  iframe.style.transform = '';
+  applyZoomToBody(iframe);
 }
 
 /**
