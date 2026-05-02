@@ -4,14 +4,26 @@ import { addPreviewButtons, findHtmlFileHeaders, getRawUrl, getBlobPageRawUrl } 
 import { createBatchPreviewButton } from './batch-preview';
 import { createInlinePreview } from './inline-preview';
 import { fetchPreviewHtml } from './html-fetcher';
+import { hasActivePreviewTab, updatePreviewTab } from './preview-tab-manager';
 
 const BATCH_BUTTON_SELECTOR = '.html-preview-batch-btn';
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
 const autoPreviewInFlight = new WeakSet<Element>();
 
+let lastBlobRawUrl: string | null = null;
+
 /**
- * Handle a page update: check whitelist, add preview buttons, auto-preview.
- * Called by the observer callback after settings are loaded.
+ * Reset the cached last-seen blob raw URL. Used by tests to start from a
+ * clean state between cases.
+ */
+export function resetLastBlobUrl(): void {
+  lastBlobRawUrl = null;
+}
+
+/**
+ * Handle a page update: check whitelist, add preview buttons, auto-preview,
+ * and push fresh HTML into an open preview tab when the user has navigated
+ * to a new HTML file in the GitHub Code tab.
  * @param pathname - Current URL pathname
  * @param settings - Loaded extension settings
  */
@@ -31,6 +43,14 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
       if (diffHeader) {
         diffHeader.appendChild(batchBtn);
       }
+    }
+  }
+
+  if (pageType === 'blob-html' && hasActivePreviewTab()) {
+    const rawUrl = getBlobPageRawUrl();
+    if (rawUrl && rawUrl !== lastBlobRawUrl) {
+      lastBlobRawUrl = rawUrl;
+      void updatePreviewTab(rawUrl, settings.enableJavaScript);
     }
   }
 
