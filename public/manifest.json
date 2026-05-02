@@ -41,9 +41,17 @@
       "128": "icons/icon-128.png"
     }
   },
+  "sandbox": {
+    "pages": ["src/preview-frame.html"]
+  },
   "web_accessible_resources": [
     {
-      "resources": ["src/preview.html", "assets/preview.js"],
+      "resources": [
+        "src/preview.html",
+        "src/preview-frame.html",
+        "assets/preview.js",
+        "assets/preview-frame.js"
+      ],
       "matches": ["https://github.com/*"]
     }
   ]
