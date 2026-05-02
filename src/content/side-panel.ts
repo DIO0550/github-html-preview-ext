@@ -1,6 +1,7 @@
 import { createViewportToggle } from './viewport-toggle';
 import { createZoomControl } from './zoom-control';
 import { getCachedSettings } from './settings';
+import { createBlobUrl, revokeBlobUrl } from './blob-url';
 
 const PANEL_ID = 'html-preview-panel';
 const PANEL_IFRAME_ID = 'html-preview-panel-iframe';
@@ -67,7 +68,8 @@ export function createSidePanel(): HTMLElement {
   // Iframe
   const iframe = document.createElement('iframe');
   iframe.id = PANEL_IFRAME_ID;
-  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  const settings = getCachedSettings();
+  iframe.setAttribute('sandbox', settings.enableJavaScript ? 'allow-scripts' : '');
   iframe.style.cssText = 'flex: 1; border: none; width: 100%;';
 
   const toolbar = document.createElement('div');
@@ -96,7 +98,12 @@ export function showInPanel(html: string, fileName: string): void {
   if (!panel) panel = createSidePanel();
 
   const iframe = panel.querySelector('iframe') as HTMLIFrameElement;
-  iframe.srcdoc = html;
+  // Revoke previous blob URL to prevent memory leaks
+  if (iframe.src && iframe.src.startsWith('blob:')) {
+    revokeBlobUrl(iframe.src);
+  }
+  const blobUrl = createBlobUrl(html);
+  iframe.src = blobUrl;
 
   // Update header with file name and close button
   const header = panel.children[1] as HTMLElement;

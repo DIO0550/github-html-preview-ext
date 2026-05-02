@@ -1,8 +1,11 @@
+import { createBlobUrl, revokeBlobUrl } from './content/blob-url';
+
 type PreviewMessage = {
   type: string;
   id: string;
   html: string | null;
   error: string | null;
+  enableJavaScript?: boolean;
 };
 
 /**
@@ -20,8 +23,15 @@ export function handlePreviewMessage(message: PreviewMessage, expectedId: string
   if (message.html) {
     if (loading) loading.style.display = 'none';
     if (iframe) {
+      // Revoke previous blob URL if any
+      if (iframe.src && iframe.src.startsWith('blob:')) {
+        revokeBlobUrl(iframe.src);
+      }
       iframe.style.display = 'block';
-      iframe.srcdoc = message.html;
+      const enableJS = message.enableJavaScript !== false;
+      iframe.setAttribute('sandbox', enableJS ? 'allow-scripts' : '');
+      const blobUrl = createBlobUrl(message.html);
+      iframe.src = blobUrl;
     }
   } else if (message.error) {
     if (loading) loading.style.display = 'none';

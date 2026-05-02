@@ -43,11 +43,11 @@ it('sets document.body.style.marginRight to adjust layout', () => {
   expect(document.body.style.marginRight).toBe('40%');
 });
 
-it('contains an iframe with sandbox allow-scripts', () => {
+it('contains an iframe with sandbox allow-scripts (JS enabled by default)', () => {
   createSidePanel();
   const iframe = document.querySelector('#html-preview-panel iframe');
   expect(iframe).not.toBeNull();
-  expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
+  expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts');
 });
 
 // showInPanel
@@ -57,10 +57,10 @@ it('creates panel if it does not exist', () => {
   expect(document.getElementById('html-preview-panel')).not.toBeNull();
 });
 
-it('sets iframe srcdoc to provided HTML', () => {
+it('sets iframe src to a blob URL', () => {
   showInPanel('<html><body>Hello</body></html>', 'index.html');
   const iframe = document.querySelector('#html-preview-panel iframe') as HTMLIFrameElement;
-  expect(iframe.srcdoc).toContain('Hello');
+  expect(iframe.src).toMatch(/^blob:/);
 });
 
 it('displays file name in header', () => {

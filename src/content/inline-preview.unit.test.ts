@@ -174,22 +174,31 @@ it('creates an iframe wrapper inside the container', () => {
   expect(wrapper).not.toBeNull();
 });
 
-it('sets iframe srcdoc to the provided HTML', () => {
+it('sets iframe src to a blob URL', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
   const iframe = createInlinePreview(container, '<html><body>Hello</body></html>');
 
-  expect(iframe.srcdoc).toContain('Hello');
+  expect(iframe.src).toMatch(/^blob:/);
 });
 
-it('sets iframe sandbox to allow-scripts', () => {
+it('sets iframe sandbox to allow-scripts when enableJavaScript is true', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
-  const iframe = createInlinePreview(container, '<html><body></body></html>');
+  const iframe = createInlinePreview(container, '<html><body></body></html>', 100, true);
 
-  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
+  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+});
+
+it('sets iframe sandbox to empty when enableJavaScript is false', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  const iframe = createInlinePreview(container, '<html><body></body></html>', 100, false);
+
+  expect(iframe.getAttribute('sandbox')).toBe('');
 });
 
 // toggleInlinePreview
@@ -236,14 +245,15 @@ it('removes the wrapper from container', () => {
   expect(container.querySelector('.html-preview-inline')).toBeNull();
 });
 
-it('clears iframe srcdoc before removal', () => {
+it('revokes blob URL on removal (src no longer starts with blob:)', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
   const iframe = createInlinePreview(container, '<html><body>Clear me</body></html>');
+  expect(iframe.src).toMatch(/^blob:/);
   removeInlinePreview(container);
 
-  expect(iframe.srcdoc).toBe('');
+  expect(iframe.src).not.toMatch(/^blob:/);
 });
 
 // --- zoom integration (replacing legacy transform assertions) ---

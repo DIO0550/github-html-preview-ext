@@ -36,9 +36,9 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
 
   if (settings.autoPreview) {
     if (pageType === 'pr-files') {
-      autoPreviewPrFiles(settings.defaultZoom);
+      autoPreviewPrFiles(settings.defaultZoom, settings.enableJavaScript);
     } else if (pageType === 'blob-html') {
-      autoPreviewBlobPage(settings.defaultZoom);
+      autoPreviewBlobPage(settings.defaultZoom, settings.enableJavaScript);
     }
   }
 }
@@ -46,8 +46,9 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
 /**
  * Auto-preview all HTML files in a PR that don't already have an inline preview.
  * @param defaultZoom - Zoom percentage for new previews
+ * @param enableJavaScript - Whether to enable JS in previews
  */
-async function autoPreviewPrFiles(defaultZoom: number): Promise<void> {
+async function autoPreviewPrFiles(defaultZoom: number, enableJavaScript: boolean): Promise<void> {
   const headers = findHtmlFileHeaders();
   for (const header of headers) {
     const rawUrl = getRawUrl(header);
@@ -59,9 +60,9 @@ async function autoPreviewPrFiles(defaultZoom: number): Promise<void> {
     autoPreviewInFlight.add(container);
 
     try {
-      const html = await fetchPreviewHtml(rawUrl);
+      const html = await fetchPreviewHtml(rawUrl, enableJavaScript);
       if (!container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) {
-        createInlinePreview(container, html, defaultZoom);
+        createInlinePreview(container, html, defaultZoom, enableJavaScript);
       }
     } catch {
       // Continue with remaining files
@@ -74,8 +75,9 @@ async function autoPreviewPrFiles(defaultZoom: number): Promise<void> {
 /**
  * Auto-preview the HTML file on a blob page.
  * @param defaultZoom - Zoom percentage for the preview
+ * @param enableJavaScript - Whether to enable JS in previews
  */
-async function autoPreviewBlobPage(defaultZoom: number): Promise<void> {
+async function autoPreviewBlobPage(defaultZoom: number, enableJavaScript: boolean): Promise<void> {
   const rawUrl = getBlobPageRawUrl();
   if (!rawUrl) return;
 
@@ -90,7 +92,7 @@ async function autoPreviewBlobPage(defaultZoom: number): Promise<void> {
   try {
     const html = await fetchPreviewHtml(rawUrl);
     if (!container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) {
-      createInlinePreview(container, html, defaultZoom);
+      createInlinePreview(container, html, defaultZoom, enableJavaScript);
     }
   } catch {
     // Silently fail

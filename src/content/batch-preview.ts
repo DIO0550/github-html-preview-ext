@@ -36,8 +36,9 @@ async function previewAllHtml(): Promise<void> {
     if (container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) continue;
 
     try {
-      const html = await fetchPreviewHtml(rawUrl);
-      createInlinePreview(container, html, getCachedSettings().defaultZoom);
+      const settings = getCachedSettings();
+      const html = await fetchPreviewHtml(rawUrl, settings.enableJavaScript);
+      createInlinePreview(container, html, settings.defaultZoom, settings.enableJavaScript);
     } catch {
       // Continue with remaining files on per-file failure
     }

@@ -100,7 +100,7 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
   const panelBtn = createPreviewButton('Panel', async () => {
     updateButtonState(panelBtn, 'loading');
     try {
-      const html = await fetchPreviewHtml(rawUrl);
+      const html = await fetchPreviewHtml(rawUrl, getCachedSettings().enableJavaScript);
       showInPanel(html, fileName);
       updateButtonState(panelBtn, 'idle');
     } catch (e) {
@@ -114,8 +114,9 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
     if (!diffContainer) return;
     updateButtonState(inlineBtn, 'loading');
     try {
-      const html = await fetchPreviewHtml(rawUrl);
-      toggleInlinePreview(diffContainer, html, getCachedSettings().defaultZoom);
+      const settings = getCachedSettings();
+      const html = await fetchPreviewHtml(rawUrl, settings.enableJavaScript);
+      toggleInlinePreview(diffContainer, html, settings.defaultZoom, settings.enableJavaScript);
       updateButtonState(inlineBtn, 'idle');
     } catch (e) {
       updateButtonState(inlineBtn, 'error', e instanceof Error ? e.message : 'Preview failed');
@@ -125,7 +126,7 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
 
   // Preview button (new tab) — inserted last so it appears first
   const previewBtn = createPreviewButton('Preview', () => {
-    fetchAndPreview(rawUrl);
+    fetchAndPreview(rawUrl, getCachedSettings().enableJavaScript);
   });
   insertPreviewButton(header, previewBtn);
 }

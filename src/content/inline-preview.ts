@@ -1,5 +1,6 @@
 import { createViewportToggle } from './viewport-toggle';
 import { createZoomControl } from './zoom-control';
+import { createBlobUrl, revokeBlobUrl } from './blob-url';
 
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
 const HIDDEN_MARKER = 'html-preview-hidden-code';
@@ -109,12 +110,14 @@ function findCodeContainer(container: Element): HTMLElement | null {
  * @param container - The DOM element containing the code
  * @param html - HTML content to render (should already have `<base>` injected)
  * @param defaultZoom - Initial zoom percentage (default 100)
+ * @param enableJavaScript - Whether to allow script execution in the iframe (default true)
  * @returns The created iframe element
  */
 export function createInlinePreview(
   container: Element,
   html: string,
-  defaultZoom: number = 100
+  defaultZoom: number = 100,
+  enableJavaScript: boolean = true
 ): HTMLIFrameElement {
   const wrapper = document.createElement('div');
   wrapper.className = INLINE_WRAPPER_CLASS;
@@ -126,13 +129,14 @@ export function createInlinePreview(
   `;
 
   const iframe = document.createElement('iframe');
-  iframe.srcdoc = html;
+  const blobUrl = createBlobUrl(html);
+  iframe.src = blobUrl;
   iframe.style.cssText = `
     width: 100%;
     height: 80vh;
     border: none;
   `;
-  iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+  iframe.setAttribute('sandbox', enableJavaScript ? 'allow-scripts' : '');
 
   const toolbar = document.createElement('div');
   toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 0;';
@@ -165,8 +169,9 @@ export function createInlinePreview(
  * @param container - The DOM element containing the preview
  * @param html - HTML content to render
  * @param defaultZoom - Initial zoom percentage (default 100)
+ * @param enableJavaScript - Whether to allow script execution (default true)
  */
-export function toggleInlinePreview(container: Element, html: string, defaultZoom: number = 100): void {
+export function toggleInlinePreview(container: Element, html: string, defaultZoom: number = 100, enableJavaScript: boolean = true): void {
   const existing = container.querySelector(`.${INLINE_WRAPPER_CLASS}`) as HTMLElement | null;
   if (existing) {
     const isHidden = existing.style.display === 'none';
@@ -179,7 +184,7 @@ export function toggleInlinePreview(container: Element, html: string, defaultZoo
     }
     return;
   }
-  createInlinePreview(container, html, defaultZoom);
+  createInlinePreview(container, html, defaultZoom, enableJavaScript);
 }
 
 /**
@@ -199,7 +204,10 @@ export function removeInlinePreview(container: Element): void {
       observer.disconnect();
       iframeObservers.delete(iframe);
     }
-    iframe.srcdoc = '';
+    if (iframe.src && iframe.src.startsWith('blob:')) {
+      revokeBlobUrl(iframe.src);
+    }
+    iframe.src = '';
   }
 
   wrapper.remove();
