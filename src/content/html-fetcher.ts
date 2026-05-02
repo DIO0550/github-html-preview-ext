@@ -1,6 +1,7 @@
 import { injectBaseTag } from './url-utils';
 import { sanitizeHtml } from './html-sanitizer';
 import { injectSecuritySandbox } from './security-sandbox';
+import { injectPreviewBridge } from './preview-bridge-script';
 import { openOrReusePreviewTab } from './preview-tab-manager';
 
 /**
@@ -18,6 +19,11 @@ export function buildPreviewHtml(rawUrl: string, html: string, enableJavaScript:
   if (enableJavaScript) {
     result = injectSecuritySandbox(result);
   }
+  // Always inject the bridge script — it reports content scrollHeight to
+  // the parent so the embedder can auto-fit the iframe height. When the
+  // user disables JS, the inner sandbox attribute strips `allow-scripts`,
+  // so the bridge silently no-ops along with all user scripts.
+  result = injectPreviewBridge(result);
   return result;
 }
 
