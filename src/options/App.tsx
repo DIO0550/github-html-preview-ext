@@ -68,6 +68,11 @@ function App() {
     saveSettings({ ...settings, autoPreview: !settings.autoPreview });
   };
 
+  /** Toggle JavaScript execution setting */
+  const toggleJavaScript = () => {
+    saveSettings({ ...settings, enableJavaScript: !settings.enableJavaScript });
+  };
+
   /** @param value - Zoom input string to parse, clamp, and save */
   const changeZoom = (value: string) => {
     const num = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(value) || MIN_ZOOM));
@@ -129,6 +134,20 @@ function App() {
             className="w-4 h-4"
           />
           <span className="text-foreground">Automatically preview HTML files on page load</span>
+        </label>
+      </section>
+
+      {/* JavaScript Execution Toggle */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold text-foreground mb-2">JavaScript Execution</h2>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={settings.enableJavaScript}
+            onChange={toggleJavaScript}
+            className="w-4 h-4"
+          />
+          <span className="text-foreground">Enable JavaScript execution in previews (sandboxed)</span>
         </label>
       </section>
 

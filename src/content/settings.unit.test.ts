@@ -17,6 +17,7 @@ it('returns default settings when storage is empty', async () => {
     allowedRepos: [],
     autoPreview: false,
     defaultZoom: 100,
+    enableJavaScript: true,
   });
 });
 
@@ -35,6 +36,7 @@ it('loads saved settings from storage', async () => {
     allowedRepos: ['owner/repo'],
     autoPreview: true,
     defaultZoom: 150,
+    enableJavaScript: true,
   });
 });
 
@@ -51,6 +53,7 @@ it('merges partial saved settings with defaults', async () => {
     allowedRepos: [],
     autoPreview: true,
     defaultZoom: 100,
+    enableJavaScript: true,
   });
 });
 
@@ -65,6 +68,7 @@ it('falls back to defaults when storage.sync.get throws', async () => {
     allowedRepos: [],
     autoPreview: false,
     defaultZoom: 100,
+    enableJavaScript: true,
   });
 });
 

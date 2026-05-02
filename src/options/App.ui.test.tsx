@@ -107,10 +107,10 @@ it('toggles auto-preview and saves to storage', async () => {
   render(<App />);
 
   await waitFor(() => {
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(0);
   });
 
-  const toggle = screen.getByRole('checkbox');
+  const toggle = screen.getByLabelText('Automatically preview HTML files on page load');
   fireEvent.click(toggle);
 
   await waitFor(() => {
