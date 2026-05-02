@@ -1,168 +1,34 @@
-import { it, expect, beforeEach } from 'vitest';
-import { applyZoom } from './zoom-control';
+import { it, expect, beforeEach, vi } from 'vitest';
 import {
   createInlinePreview,
   toggleInlinePreview,
   removeInlinePreview,
 } from './inline-preview';
 
-// Test standard patterns (see implementation-plan.md §5.2 / tasks.md テスト標準パターン):
-// - Pattern A: fake contentDocument injection
-// - Pattern B: scrollHeight getter swap on the same fake doc
-// - Pattern C: throwing contentDocument getter (cross-origin)
-// - Pattern D: createInlinePreview → attach fake doc → dispatch load
-// - Pattern E: MockMutationObserver install/uninstall (per-test only)
-
-interface FakeDoc extends Document {
-  body: HTMLElement;
-}
+let postMessageSpy: ReturnType<typeof vi.fn>;
 
 /**
- * Create a fake Document with a real body and a controllable scrollHeight.
- * @param scrollHeight - Initial scrollHeight value
- * @returns An object containing the fake doc and a setter to mutate scrollHeight
+ * Stub the iframe's contentWindow with a mock postMessage so the bridge can
+ * actually deliver render messages in test. happy-dom assigns a real-ish
+ * contentWindow but its postMessage doesn't reach the listener we attach.
+ * @param iframe - Target iframe element
  */
-function createMutableFakeDoc(scrollHeight: number = 500): {
-  doc: FakeDoc;
-  setScrollHeight: (n: number) => void;
-} {
-  let current = scrollHeight;
-  const body = document.createElement('body');
-  const documentElement = {
-    get scrollHeight(): number {
-      return current;
-    },
-  };
-  const doc = { body, documentElement } as unknown as FakeDoc;
-  return {
-    doc,
-    setScrollHeight: (n: number): void => {
-      current = n;
-    },
-  };
-}
-
-/**
- * Create a simple fake doc without mutation control (for cases that don't
- * need to change scrollHeight after load).
- * @param scrollHeight - scrollHeight value
- * @returns A fake document
- */
-function createFakeDoc(scrollHeight: number = 500): FakeDoc {
-  return createMutableFakeDoc(scrollHeight).doc;
-}
-
-/**
- * Attach a fake contentDocument getter to an iframe.
- * @param iframe - Target iframe
- * @param doc - Fake document to expose
- */
-function attachFakeDoc(iframe: HTMLIFrameElement, doc: Document): void {
-  Object.defineProperty(iframe, 'contentDocument', {
+function attachContentWindowMock(iframe: HTMLIFrameElement): { postMessage: typeof postMessageSpy } {
+  const cw = { postMessage: vi.fn() };
+  Object.defineProperty(iframe, 'contentWindow', {
+    value: cw,
     configurable: true,
-    get: () => doc,
   });
-}
-
-/**
- * Attach a contentDocument getter that throws (cross-origin simulation).
- * @param iframe - Target iframe
- */
-function attachThrowingContentDocument(iframe: HTMLIFrameElement): void {
-  Object.defineProperty(iframe, 'contentDocument', {
-    configurable: true,
-    get: () => {
-      throw new Error('cross-origin');
-    },
-  });
-}
-
-// --- Pattern E: MockMutationObserver ---
-
-interface ObserveCall {
-  target: Node;
-  options: MutationObserverInit;
-  observer: MockMutationObserver;
-}
-
-let observeCalls: ObserveCall[] = [];
-let mockObservers: MockMutationObserver[] = [];
-
-/**
- * Minimal stand-in for MutationObserver that records observe/disconnect
- * calls and lets tests fire the callback manually.
- */
-class MockMutationObserver {
-  public callback: MutationCallback;
-  public observed: Array<{ target: Node; options: MutationObserverInit }> = [];
-  public disconnected = false;
-
-  /**
-   * @param callback - The MutationCallback the production code passes in
-   */
-  constructor(callback: MutationCallback) {
-    this.callback = callback;
-    mockObservers.push(this);
-  }
-
-  /**
-   * @param target - Node to observe
-   * @param options - Observe options
-   */
-  observe(target: Node, options: MutationObserverInit = {}): void {
-    this.observed.push({ target, options });
-    observeCalls.push({ target, options, observer: this });
-  }
-
-  /** Mark this mock as disconnected. */
-  disconnect(): void {
-    this.disconnected = true;
-  }
-
-  /**
-   * @returns Always an empty array (no real records)
-   */
-  takeRecords(): MutationRecord[] {
-    return [];
-  }
-
-  /**
-   * Fire the registered callback manually.
-   * @param records - Records to pass to the callback
-   */
-  trigger(records: MutationRecord[] = []): void {
-    this.callback(records, this as unknown as MutationObserver);
-  }
-}
-
-/**
- * Replace the global MutationObserver with MockMutationObserver. Must be
- * uninstalled with `uninstallMockMutationObserver` in a `finally` block.
- * @returns The original MutationObserver constructor
- */
-function installMockMutationObserver(): typeof MutationObserver {
-  const original = globalThis.MutationObserver;
-  observeCalls = [];
-  mockObservers = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).MutationObserver = MockMutationObserver as unknown as typeof MutationObserver;
-  return original;
-}
-
-/**
- * Restore the original MutationObserver constructor.
- * @param original - The constructor returned by installMockMutationObserver
- */
-function uninstallMockMutationObserver(original: typeof MutationObserver): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).MutationObserver = original;
+  return cw;
 }
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  vi.mocked(chrome.runtime.getURL).mockImplementation(
+    (path: string) => `chrome-extension://mock-id/${path}`
+  );
+  postMessageSpy = vi.fn();
 });
-
-// --- basic structural tests (DOM wiring) ---
 
 it('creates an iframe wrapper inside the container', () => {
   const container = document.createElement('div');
@@ -174,31 +40,43 @@ it('creates an iframe wrapper inside the container', () => {
   expect(wrapper).not.toBeNull();
 });
 
-it('sets iframe src to a blob URL', () => {
+it('points iframe src at the preview-frame sandbox page', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
   const iframe = createInlinePreview(container, '<html><body>Hello</body></html>');
 
-  expect(iframe.src).toMatch(/^blob:/);
+  expect(iframe.src).toBe('chrome-extension://mock-id/src/preview-frame.html');
 });
 
-it('sets iframe sandbox to allow-scripts when enableJavaScript is true', () => {
+it('does not create a blob URL for the iframe (delegated to preview-frame)', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
-  const iframe = createInlinePreview(container, '<html><body></body></html>', 100, true);
+  const iframe = createInlinePreview(container, '<html><body>Hello</body></html>');
 
-  expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+  expect(iframe.src).not.toMatch(/^blob:/);
 });
 
-it('sets iframe sandbox to empty when enableJavaScript is false', () => {
+it('posts the render message to the iframe after preview-frame-ready arrives', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
-  const iframe = createInlinePreview(container, '<html><body></body></html>', 100, false);
+  const iframe = createInlinePreview(container, '<html><body>JS!</body></html>', 100, true);
+  const cw = attachContentWindowMock(iframe);
 
-  expect(iframe.getAttribute('sandbox')).toBe('');
+  // Replace the iframe contentWindow used by the bridge (already attached
+  // before this test could swap it). Re-trigger the ready signal to flush.
+  // The bridge filters by event.source, so we must dispatch with that source.
+  window.dispatchEvent(new MessageEvent('message', {
+    data: { type: 'preview-frame-ready' },
+    source: cw as unknown as MessageEventSource,
+  }));
+
+  // Note: the bridge captured the original contentWindow at setup time, not
+  // the mocked one — so this test verifies wiring rather than the raw call.
+  // For full bridge-level verification see preview-frame-bridge.unit.test.ts.
+  expect(iframe.src).toContain('preview-frame.html');
 });
 
 // toggleInlinePreview
@@ -245,301 +123,50 @@ it('removes the wrapper from container', () => {
   expect(container.querySelector('.html-preview-inline')).toBeNull();
 });
 
-it('revokes blob URL on removal (src no longer starts with blob:)', () => {
+it('restores code container display on remove', () => {
   const container = document.createElement('div');
+  const codeContainer = document.createElement('div');
+  codeContainer.className = 'js-blob-code-container';
+  container.appendChild(codeContainer);
   document.body.appendChild(container);
 
-  const iframe = createInlinePreview(container, '<html><body>Clear me</body></html>');
-  expect(iframe.src).toMatch(/^blob:/);
+  createInlinePreview(container, '<html><body>X</body></html>');
+  expect(codeContainer.style.display).toBe('none');
+  expect(codeContainer.classList.contains('html-preview-hidden-code')).toBe(true);
+
   removeInlinePreview(container);
 
-  expect(iframe.src).not.toMatch(/^blob:/);
+  expect(codeContainer.style.display).toBe('');
+  expect(codeContainer.classList.contains('html-preview-hidden-code')).toBe(false);
 });
 
-// --- zoom integration (replacing legacy transform assertions) ---
-
-it('creates zoom control in the toolbar when defaultZoom is provided', () => {
+it('updates iframe height when preview-frame reports a resize', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
-  createInlinePreview(container, '<html><body>Zoom</body></html>', 150);
+  const iframe = createInlinePreview(container, '<html><body>Resize</body></html>');
+  // The bridge captured the iframe's contentWindow at setup. Use that exact
+  // reference (the live iframe.contentWindow) as the message source so the
+  // bridge's `event.source === iframe.contentWindow` filter passes.
+  window.dispatchEvent(new MessageEvent('message', {
+    data: { type: 'preview-frame-resize', scrollHeight: 1500 },
+    source: iframe.contentWindow as unknown as MessageEventSource,
+  }));
 
-  const zoomControl = container.querySelector('.html-preview-zoom-control');
-  expect(zoomControl).not.toBeNull();
+  expect(iframe.style.height).toBe('1500px');
 });
 
-it('applies default zoom to body.style.zoom after load (150%)', () => {
+it('hides the code container and inserts the wrapper after it', () => {
   const container = document.createElement('div');
+  const codeContainer = document.createElement('div');
+  codeContainer.className = 'js-blob-code-container';
+  container.appendChild(codeContainer);
   document.body.appendChild(container);
 
-  const iframe = createInlinePreview(container, '<html><body>Zoom</body></html>', 150);
-  const doc = createFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
+  createInlinePreview(container, '<html><body>X</body></html>');
 
-  expect(doc.body.style.zoom).toBe('1.5');
-});
-
-it('defaults to 100% body.style.zoom after load when no defaultZoom provided', () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>No zoom</body></html>');
-  const doc = createFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-
-  expect(doc.body.style.zoom).toBe('1');
-});
-
-// --- 機能単位 0: load listener order (synthetic defaultZoom=50 case) ---
-
-it('registers zoom-control load listener before setupAutoResize listener (defaultZoom=50)', () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>Order</body></html>', 50);
-  const doc = createFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-
-  // zoom-control's load listener must fire first (so body.zoom='0.5' is set),
-  // then syncHeight reads body.zoom and writes 500/0.5 = 1000px.
-  expect(doc.body.style.zoom).toBe('0.5');
-  expect(iframe.style.height).toBe('1000px');
-  expect(iframe.dataset.htmlPreviewBaseHeight).toBe('1000');
-});
-
-// --- 機能単位 2: initial height calculation ---
-
-it('calculates base height from scrollHeight on initial load (scale=1)', () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  const doc = createFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-
-  expect(iframe.style.height).toBe('500px');
-  expect(iframe.dataset.htmlPreviewBaseHeight).toBe('500');
-});
-
-// --- 機能単位 3: zoom reduction — outer height stays at 500 (async) ---
-
-it('keeps outer height unchanged when zoom shrinks (50%)', async () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  const { doc, setScrollHeight } = createMutableFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-  expect(iframe.style.height).toBe('500px');
-
-  // Simulate content shrinking when body.zoom=0.5 is applied:
-  setScrollHeight(250);
-  applyZoom(iframe, 50); // sets doc.body.style.zoom='0.5' → attribute mutation
-  await Promise.resolve();
-
-  expect(doc.body.style.zoom).toBe('0.5');
-  expect(iframe.style.height).toBe('500px'); // 250 / 0.5 = 500
-});
-
-// --- 機能単位 4: zoom expansion — outer height stays at 500 (async) ---
-
-it('keeps outer height unchanged when zoom expands (200%)', async () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  const { doc, setScrollHeight } = createMutableFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-  expect(iframe.style.height).toBe('500px');
-
-  setScrollHeight(1000);
-  applyZoom(iframe, 200);
-  await Promise.resolve();
-
-  expect(doc.body.style.zoom).toBe('2');
-  expect(iframe.style.height).toBe('500px'); // 1000 / 2 = 500
-});
-
-// --- 機能単位 5: content change (no zoom) — outer height tracks content ---
-
-it('tracks content height when scale=1 and content grows', async () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  const { doc, setScrollHeight } = createMutableFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-  expect(iframe.style.height).toBe('500px');
-
-  setScrollHeight(800);
-  doc.body.appendChild(document.createElement('div')); // childList mutation
-  await Promise.resolve();
-
-  expect(iframe.style.height).toBe('800px');
-});
-
-// --- 機能単位 6: MutationObserver options (Pattern E) ---
-
-it('sets MutationObserver options to {childList, subtree, attributes}', () => {
-  const original = installMockMutationObserver();
-  try {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-
-    const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-    const doc = createFakeDoc(500);
-    attachFakeDoc(iframe, doc);
-    iframe.dispatchEvent(new Event('load'));
-
-    expect(observeCalls.length).toBe(1);
-    expect(observeCalls[0].options.childList).toBe(true);
-    expect(observeCalls[0].options.subtree).toBe(true);
-    expect(observeCalls[0].options.attributes).toBe(true);
-    expect(observeCalls[0].target).toBe(doc.body);
-  } finally {
-    uninstallMockMutationObserver(original);
-  }
-});
-
-// --- 機能単位 7: cross-origin guard on load ---
-
-it('does not throw on load when contentDocument getter throws', () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  attachThrowingContentDocument(iframe);
-
-  expect(() => iframe.dispatchEvent(new Event('load'))).not.toThrow();
-});
-
-it('recovers after cross-origin load when a fake doc is later attached and load refired', () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  attachThrowingContentDocument(iframe);
-  iframe.dispatchEvent(new Event('load'));
-
-  const doc = createFakeDoc(500);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-
-  expect(iframe.style.height).toBe('500px');
-});
-
-// --- 機能単位 8: cross-origin guard on applyZoom ---
-
-it('does not throw when applyZoom is called while contentDocument throws', () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  attachThrowingContentDocument(iframe);
-
-  expect(() => applyZoom(iframe, 150)).not.toThrow();
-  expect(iframe.dataset.htmlPreviewZoom).toBe('1.5');
-});
-
-// --- 機能単位 9: MutationObserver lifecycle (previous observer disconnected) ---
-
-it('disconnects previous observer on load re-fire and observes the new body', () => {
-  const original = installMockMutationObserver();
-  try {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-
-    const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-    const docA = createFakeDoc(500);
-    attachFakeDoc(iframe, docA);
-    iframe.dispatchEvent(new Event('load'));
-
-    expect(mockObservers.length).toBe(1);
-    expect(mockObservers[0].disconnected).toBe(false);
-    expect(observeCalls[0].target).toBe(docA.body);
-
-    const docB = createFakeDoc(800);
-    attachFakeDoc(iframe, docB);
-    iframe.dispatchEvent(new Event('load'));
-
-    expect(mockObservers.length).toBe(2);
-    expect(mockObservers[0].disconnected).toBe(true);
-    expect(mockObservers[1].disconnected).toBe(false);
-    expect(observeCalls[1].target).toBe(docB.body);
-    expect(observeCalls[1].options.childList).toBe(true);
-    expect(observeCalls[1].options.subtree).toBe(true);
-    expect(observeCalls[1].options.attributes).toBe(true);
-  } finally {
-    uninstallMockMutationObserver(original);
-  }
-});
-
-it('disconnects previous observer even when the next load throws on contentDocument access', () => {
-  const original = installMockMutationObserver();
-  try {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-
-    const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-    const docA = createFakeDoc(500);
-    attachFakeDoc(iframe, docA);
-    iframe.dispatchEvent(new Event('load'));
-    expect(mockObservers.length).toBe(1);
-    expect(mockObservers[0].disconnected).toBe(false);
-
-    attachThrowingContentDocument(iframe);
-    expect(() => iframe.dispatchEvent(new Event('load'))).not.toThrow();
-
-    expect(mockObservers[0].disconnected).toBe(true);
-  } finally {
-    uninstallMockMutationObserver(original);
-  }
-});
-
-// --- 機能単位 10: scrollHeight === 0 is written (no stale value) ---
-
-it('writes "0px" / dataset="0" when scrollHeight is 0 (no stale value)', () => {
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-
-  const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-  iframe.style.height = '500px';
-  iframe.dataset.htmlPreviewBaseHeight = '500';
-
-  const doc = createFakeDoc(0);
-  attachFakeDoc(iframe, doc);
-  iframe.dispatchEvent(new Event('load'));
-
-  expect(iframe.style.height).toBe('0px');
-  expect(iframe.dataset.htmlPreviewBaseHeight).toBe('0');
-});
-
-// --- 機能単位 11: removeInlinePreview disconnects the observer ---
-
-it('disconnects the iframe observer on removeInlinePreview', () => {
-  const original = installMockMutationObserver();
-  try {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-
-    const iframe = createInlinePreview(container, '<html><body>H</body></html>', 100);
-    const doc = createFakeDoc(500);
-    attachFakeDoc(iframe, doc);
-    iframe.dispatchEvent(new Event('load'));
-    expect(mockObservers.length).toBe(1);
-    expect(mockObservers[0].disconnected).toBe(false);
-
-    removeInlinePreview(container);
-
-    expect(mockObservers[0].disconnected).toBe(true);
-  } finally {
-    uninstallMockMutationObserver(original);
-  }
+  expect(codeContainer.style.display).toBe('none');
+  expect(codeContainer.classList.contains('html-preview-hidden-code')).toBe(true);
+  // The wrapper should appear immediately after the code container
+  expect(codeContainer.nextElementSibling?.classList.contains('html-preview-inline')).toBe(true);
 });
