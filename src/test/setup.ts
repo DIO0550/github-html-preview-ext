@@ -35,6 +35,17 @@ const chromeMock = {
       addListener: vi.fn(),
     },
   },
+  tabs: {
+    query: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    get: vi.fn(),
+    sendMessage: vi.fn(),
+    onRemoved: {
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    },
+  },
 };
 
 vi.stubGlobal('chrome', chromeMock);

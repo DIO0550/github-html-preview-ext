@@ -34,4 +34,23 @@ async function loadPreview(): Promise<void> {
   if (loading) loading.textContent = 'Preview timed out.';
 }
 
+/**
+ * Listen for `preview-update` messages from the background script. The
+ * background forwards updates to this tab whenever the user navigates to a
+ * different HTML file in the GitHub Code tab while this preview is open.
+ */
+chrome.runtime.onMessage.addListener((message: { type?: string; html?: string | null; enableJavaScript?: boolean }) => {
+  if (message.type !== 'preview-update') return;
+  handlePreviewMessage(
+    {
+      type: 'preview-update',
+      id: previewId ?? '',
+      html: message.html ?? null,
+      error: null,
+      enableJavaScript: message.enableJavaScript,
+    },
+    previewId ?? ''
+  );
+});
+
 loadPreview();

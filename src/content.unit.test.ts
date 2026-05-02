@@ -20,10 +20,17 @@ vi.mock('./content/html-fetcher', () => ({
   fetchPreviewHtml: vi.fn(),
 }));
 
+vi.mock('./content/preview-tab-manager', () => ({
+  hasActivePreviewTab: vi.fn(() => false),
+  updatePreviewTab: vi.fn(),
+  clearPreviewTab: vi.fn(),
+}));
+
 import { addPreviewButtons, findHtmlFileHeaders, getRawUrl, getBlobPageRawUrl } from './content/github-dom';
 import { createInlinePreview } from './content/inline-preview';
 import { fetchPreviewHtml } from './content/html-fetcher';
-import { handlePageUpdate } from './content/page-handler';
+import { hasActivePreviewTab, updatePreviewTab, clearPreviewTab } from './content/preview-tab-manager';
+import { handlePageUpdate, resetLastBlobUrl } from './content/page-handler';
 
 beforeEach(() => {
   vi.mocked(addPreviewButtons).mockReset();
@@ -32,6 +39,10 @@ beforeEach(() => {
   vi.mocked(getBlobPageRawUrl).mockReset();
   vi.mocked(createInlinePreview).mockReset();
   vi.mocked(fetchPreviewHtml).mockReset();
+  vi.mocked(hasActivePreviewTab).mockReset();
+  vi.mocked(updatePreviewTab).mockReset();
+  vi.mocked(clearPreviewTab).mockReset();
+  resetLastBlobUrl();
   document.body.innerHTML = '';
 });
 
@@ -115,6 +126,74 @@ it('passes defaultZoom to auto-preview', async () => {
       true
     );
   });
+});
+
+// auto-update of preview tab on URL change
+
+it('updates preview tab on blob-html page when active preview tab exists', () => {
+  vi.mocked(hasActivePreviewTab).mockReturnValue(true);
+  vi.mocked(getBlobPageRawUrl).mockReturnValue('https://raw.githubusercontent.com/owner/repo/main/index.html');
+
+  handlePageUpdate('/owner/repo/blob/main/index.html', defaultSettings);
+
+  expect(updatePreviewTab).toHaveBeenCalledWith(
+    'https://raw.githubusercontent.com/owner/repo/main/index.html',
+    true
+  );
+});
+
+it('skips updatePreviewTab when no active preview tab exists', () => {
+  vi.mocked(hasActivePreviewTab).mockReturnValue(false);
+  vi.mocked(getBlobPageRawUrl).mockReturnValue('https://raw.githubusercontent.com/owner/repo/main/index.html');
+
+  handlePageUpdate('/owner/repo/blob/main/index.html', defaultSettings);
+
+  expect(updatePreviewTab).not.toHaveBeenCalled();
+});
+
+it('skips updatePreviewTab when URL has not changed since last call', () => {
+  vi.mocked(hasActivePreviewTab).mockReturnValue(true);
+  vi.mocked(getBlobPageRawUrl).mockReturnValue('https://raw.githubusercontent.com/owner/repo/main/index.html');
+
+  handlePageUpdate('/owner/repo/blob/main/index.html', defaultSettings);
+  vi.mocked(updatePreviewTab).mockClear();
+
+  handlePageUpdate('/owner/repo/blob/main/index.html', defaultSettings);
+
+  expect(updatePreviewTab).not.toHaveBeenCalled();
+});
+
+it('updates preview tab when URL has changed since last call', () => {
+  vi.mocked(hasActivePreviewTab).mockReturnValue(true);
+  vi.mocked(getBlobPageRawUrl)
+    .mockReturnValueOnce('https://raw.githubusercontent.com/owner/repo/main/a.html')
+    .mockReturnValueOnce('https://raw.githubusercontent.com/owner/repo/main/b.html');
+
+  handlePageUpdate('/owner/repo/blob/main/a.html', defaultSettings);
+  vi.mocked(updatePreviewTab).mockClear();
+
+  handlePageUpdate('/owner/repo/blob/main/b.html', defaultSettings);
+
+  expect(updatePreviewTab).toHaveBeenCalledWith(
+    'https://raw.githubusercontent.com/owner/repo/main/b.html',
+    true
+  );
+});
+
+it('does not call updatePreviewTab on pr-files pages', () => {
+  vi.mocked(hasActivePreviewTab).mockReturnValue(true);
+
+  handlePageUpdate('/owner/repo/pull/1/files', defaultSettings);
+
+  expect(updatePreviewTab).not.toHaveBeenCalled();
+});
+
+it('does not call updatePreviewTab on unknown pages', () => {
+  vi.mocked(hasActivePreviewTab).mockReturnValue(true);
+
+  handlePageUpdate('/owner/repo/tree/main', defaultSettings);
+
+  expect(updatePreviewTab).not.toHaveBeenCalled();
 });
 
 it('auto-previews blob-html page when autoPreview is enabled', async () => {

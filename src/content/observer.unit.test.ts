@@ -83,3 +83,57 @@ it('fires again after debounce period for new changes', async () => {
   await vi.advanceTimersByTimeAsync(150);
   expect(callback).toHaveBeenCalledOnce();
 });
+
+// pushState / replaceState hook tests
+
+it('calls callback when history.pushState is invoked', () => {
+  const callback = vi.fn();
+  startObserving(callback);
+  callback.mockClear();
+
+  history.pushState({}, '', '/new-path');
+  expect(callback).toHaveBeenCalledOnce();
+});
+
+it('calls callback when history.replaceState is invoked', () => {
+  const callback = vi.fn();
+  startObserving(callback);
+  callback.mockClear();
+
+  history.replaceState({}, '', '/replaced-path');
+  expect(callback).toHaveBeenCalledOnce();
+});
+
+it('passes original arguments through to history.pushState', () => {
+  const callback = vi.fn();
+  startObserving(callback);
+
+  const state = { foo: 'bar' };
+  history.pushState(state, '', '/passthrough');
+  expect(location.pathname).toBe('/passthrough');
+  expect(history.state).toEqual(state);
+});
+
+it('restores original history.pushState/replaceState on stopObserving', () => {
+  const originalPush = history.pushState;
+  const originalReplace = history.replaceState;
+  const callback = vi.fn();
+
+  startObserving(callback);
+  expect(history.pushState).not.toBe(originalPush);
+  expect(history.replaceState).not.toBe(originalReplace);
+
+  stopObserving();
+  expect(history.pushState).toBe(originalPush);
+  expect(history.replaceState).toBe(originalReplace);
+});
+
+it('does not invoke callback after stopObserving when pushState is called', () => {
+  const callback = vi.fn();
+  startObserving(callback);
+  callback.mockClear();
+  stopObserving();
+
+  history.pushState({}, '', '/after-stop');
+  expect(callback).not.toHaveBeenCalled();
+});
