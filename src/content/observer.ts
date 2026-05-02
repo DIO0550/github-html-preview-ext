@@ -3,6 +3,8 @@ const DEBOUNCE_DELAY_MS = 150;
 let observer: MutationObserver | null = null;
 let turboHandler: (() => void) | null = null;
 let popstateHandler: (() => void) | null = null;
+let originalPushState: typeof history.pushState | null = null;
+let originalReplaceState: typeof history.replaceState | null = null;
 
 /**
  * Create a debounced version of a function.
@@ -19,9 +21,46 @@ function debounce(fn: () => void, delay: number): () => void {
 }
 
 /**
+ * Wrap history.pushState / history.replaceState so that the callback is
+ * invoked after each call. GitHub uses pushState for SPA navigation (clicking
+ * between files in the Code tab) — popstate does not fire for these.
+ * @param callback - Function to invoke after each pushState/replaceState call
+ */
+function hookHistoryApi(callback: () => void): void {
+  originalPushState = history.pushState;
+  originalReplaceState = history.replaceState;
+
+  history.pushState = function (...args) {
+    const result = originalPushState!.apply(this, args);
+    callback();
+    return result;
+  };
+  history.replaceState = function (...args) {
+    const result = originalReplaceState!.apply(this, args);
+    callback();
+    return result;
+  };
+}
+
+/**
+ * Restore the original history.pushState / history.replaceState functions.
+ */
+function unhookHistoryApi(): void {
+  if (originalPushState) {
+    history.pushState = originalPushState;
+    originalPushState = null;
+  }
+  if (originalReplaceState) {
+    history.replaceState = originalReplaceState;
+    originalReplaceState = null;
+  }
+}
+
+/**
  * Start observing DOM changes and navigation events.
  * Calls the callback immediately for an initial scan, then on every
- * MutationObserver trigger (debounced 150ms), `turbo:load`, and `popstate` event.
+ * MutationObserver trigger (debounced 150ms), `turbo:load`, `popstate`,
+ * `pushState`, and `replaceState` event.
  * @param callback - Function to call when the page content may have changed
  */
 export function startObserving(callback: () => void): void {
@@ -44,6 +83,9 @@ export function startObserving(callback: () => void): void {
 
   popstateHandler = () => callback();
   window.addEventListener('popstate', popstateHandler);
+
+  // GitHub SPA navigation uses pushState; popstate does not fire for it.
+  hookHistoryApi(callback);
 }
 
 /**
@@ -62,4 +104,5 @@ export function stopObserving(): void {
     window.removeEventListener('popstate', popstateHandler);
     popstateHandler = null;
   }
+  unhookHistoryApi();
 }
