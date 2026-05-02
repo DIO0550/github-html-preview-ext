@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "Preview HTML files directly from GitHub PR's Files changed tab",
   "permissions": [
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://github.com/*",
