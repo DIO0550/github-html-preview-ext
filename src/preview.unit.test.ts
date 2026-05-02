@@ -9,8 +9,7 @@ beforeEach(() => {
   `;
 });
 
-it('writes HTML to iframe srcdoc on matching message', async () => {
-  // Get the registered listener
+it('sets iframe src to blob URL on matching message', async () => {
   const { handlePreviewMessage } = await import('./preview-message-handler');
 
   handlePreviewMessage(
@@ -19,7 +18,7 @@ it('writes HTML to iframe srcdoc on matching message', async () => {
   );
 
   const iframe = document.getElementById('preview') as HTMLIFrameElement;
-  expect(iframe.srcdoc).toContain('Hello');
+  expect(iframe.src).toMatch(/^blob:/);
   expect(iframe.style.display).toBe('block');
 });
 
@@ -32,7 +31,7 @@ it('ignores messages with non-matching id', async () => {
   );
 
   const iframe = document.getElementById('preview') as HTMLIFrameElement;
-  expect(iframe.srcdoc).toBe('');
+  expect(iframe.src).not.toMatch(/^blob:/);
 });
 
 it('displays error when error field is present', async () => {

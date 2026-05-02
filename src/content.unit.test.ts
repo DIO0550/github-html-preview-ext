@@ -39,6 +39,7 @@ const defaultSettings: ExtensionSettings = {
   allowedRepos: ['owner/repo'],
   autoPreview: false,
   defaultZoom: 100,
+  enableJavaScript: true,
 };
 
 it('adds preview buttons when repo matches whitelist', () => {
@@ -110,7 +111,8 @@ it('passes defaultZoom to auto-preview', async () => {
     expect(createInlinePreview).toHaveBeenCalledWith(
       expect.anything(),
       '<html><body>Zoom</body></html>',
-      150
+      150,
+      true
     );
   });
 });
@@ -132,7 +134,8 @@ it('auto-previews blob-html page when autoPreview is enabled', async () => {
     expect(createInlinePreview).toHaveBeenCalledWith(
       container,
       '<html><body>Blob</body></html>',
-      100
+      100,
+      true
     );
   });
 });

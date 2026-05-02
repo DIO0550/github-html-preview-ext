@@ -2,12 +2,14 @@ export type ExtensionSettings = {
   allowedRepos: string[];
   autoPreview: boolean;
   defaultZoom: number;
+  enableJavaScript: boolean;
 };
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   allowedRepos: [],
   autoPreview: false,
   defaultZoom: 100,
+  enableJavaScript: true,
 };
 
 /**
@@ -30,5 +32,9 @@ export function normalizeSettings(raw: Record<string, unknown>): ExtensionSettin
     ? Math.min(200, Math.max(25, rawZoom))
     : DEFAULT_SETTINGS.defaultZoom;
 
-  return { allowedRepos, autoPreview, defaultZoom };
+  const enableJavaScript = typeof raw.enableJavaScript === 'boolean'
+    ? raw.enableJavaScript
+    : DEFAULT_SETTINGS.enableJavaScript;
+
+  return { allowedRepos, autoPreview, defaultZoom, enableJavaScript };
 }

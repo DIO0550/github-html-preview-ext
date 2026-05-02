@@ -19,6 +19,32 @@ it('injects <base> tag based on raw URL directory', () => {
   expect(result).toContain('<base href="https://github.com/owner/repo/raw/main/dir/"');
 });
 
+it('applies HTML sanitizer to remove external resource tags', () => {
+  const html = '<html><head></head><body><img src="https://evil.com/track.png"><p>OK</p></body></html>';
+  const result = buildPreviewHtml('https://github.com/owner/repo/raw/main/index.html', html);
+  expect(result).not.toContain('evil.com');
+  expect(result).toContain('OK');
+});
+
+it('injects security sandbox when enableJavaScript is true', () => {
+  const html = '<html><head></head><body>Hello</body></html>';
+  const result = buildPreviewHtml('https://github.com/owner/repo/raw/main/index.html', html, true);
+  expect(result).toContain('[HTML Preview Sandbox]');
+});
+
+it('does not inject security sandbox when enableJavaScript is false', () => {
+  const html = '<html><head></head><body>Hello</body></html>';
+  const result = buildPreviewHtml('https://github.com/owner/repo/raw/main/index.html', html, false);
+  expect(result).not.toContain('[HTML Preview Sandbox]');
+});
+
+it('applies sanitizer regardless of enableJavaScript setting', () => {
+  const html = '<html><head></head><body><img src="https://evil.com/x.png">OK</body></html>';
+  const result = buildPreviewHtml('https://github.com/owner/repo/raw/main/index.html', html, false);
+  expect(result).not.toContain('evil.com');
+  expect(result).toContain('OK');
+});
+
 // fetchPreviewHtml (via background fetch-html message)
 
 it('sends fetch-html message to background', async () => {
