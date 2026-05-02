@@ -1,5 +1,6 @@
 import { it, expect, vi, beforeEach } from 'vitest';
 import { fetchAndPreview, fetchPreviewHtml, buildPreviewHtml } from './html-fetcher';
+import { clearPreviewTab } from './preview-tab-manager';
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -9,6 +10,7 @@ beforeEach(() => {
     (path: string) => `chrome-extension://mock-id/${path}`
   );
   vi.mocked(crypto.randomUUID).mockReturnValue('mock-uuid' as `${string}-${string}-${string}-${string}-${string}`);
+  clearPreviewTab();
 });
 
 // buildPreviewHtml
@@ -84,50 +86,29 @@ it('throws when background returns error', async () => {
 
 // fetchAndPreview
 
-it('opens preview page via window.open with extension URL', async () => {
-  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({
-    html: '<html><head></head><body>OK</body></html>',
-    error: null,
-  });
-
-  await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
-
-  expect(window.open).toHaveBeenCalledWith(
-    'chrome-extension://mock-id/src/preview.html?id=mock-uuid',
-    '_blank'
-  );
-});
-
-it('sends preview-store message after successful fetch', async () => {
-  // First call: fetch-html, Second call: preview-store
+it('does not call window.open (delegates to preview-tab-manager via background)', async () => {
   vi.mocked(chrome.runtime.sendMessage)
     .mockResolvedValueOnce({ html: '<html><head></head><body>OK</body></html>', error: null })
-    .mockResolvedValueOnce(undefined);
+    .mockResolvedValueOnce({ tabId: 1, error: null });
 
   await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
 
-  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-    expect.objectContaining({
-      type: 'preview-store',
-      id: 'mock-uuid',
-      html: expect.stringContaining('<base'),
-    })
-  );
+  expect(window.open).not.toHaveBeenCalled();
 });
 
-it('sends error preview-store on fetch failure', async () => {
+it('sends open-preview-tab message with built HTML', async () => {
   vi.mocked(chrome.runtime.sendMessage)
-    .mockResolvedValueOnce({ html: null, error: 'Failed to fetch' })
-    .mockResolvedValueOnce(undefined);
+    .mockResolvedValueOnce({ html: '<html><head></head><body>OK</body></html>', error: null })
+    .mockResolvedValueOnce({ tabId: 1, error: null });
 
   await fetchAndPreview('https://github.com/owner/repo/raw/main/index.html');
 
   expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
     expect.objectContaining({
-      type: 'preview-store',
-      id: 'mock-uuid',
-      html: null,
-      error: 'Fetch failed: Failed to fetch',
+      type: 'open-preview-tab',
+      html: expect.stringContaining('<base'),
+      enableJavaScript: true,
+      existingTabId: null,
     })
   );
 });

@@ -1,6 +1,7 @@
 import { injectBaseTag } from './url-utils';
 import { sanitizeHtml } from './html-sanitizer';
 import { injectSecuritySandbox } from './security-sandbox';
+import { openOrReusePreviewTab } from './preview-tab-manager';
 
 /**
  * Build preview HTML by injecting a `<base>` tag, sanitizing external resources,
@@ -46,31 +47,11 @@ export async function fetchPreviewHtml(rawUrl: string, enableJavaScript: boolean
 }
 
 /**
- * Open a new preview tab and fetch+send the HTML to it via background messaging.
- * Opens the tab synchronously (in click event) to avoid popup blockers,
- * then fetches HTML async and sends it via chrome.runtime.sendMessage.
+ * Open or focus the preview tab via the background service worker. Reuses an
+ * existing preview tab when one is tracked, otherwise opens a new tab.
  * @param rawUrl - The raw GitHub URL of the HTML file
  * @param enableJavaScript - Whether to enable JS execution in the preview (default true)
  */
 export async function fetchAndPreview(rawUrl: string, enableJavaScript: boolean = true): Promise<void> {
-  const previewId = crypto.randomUUID();
-  const previewUrl = chrome.runtime.getURL(`src/preview.html?id=${previewId}`);
-  window.open(previewUrl, '_blank');
-
-  try {
-    const htmlWithBase = await fetchPreviewHtml(rawUrl, enableJavaScript);
-    chrome.runtime.sendMessage({
-      type: 'preview-store',
-      id: previewId,
-      html: htmlWithBase,
-      enableJavaScript,
-    });
-  } catch (error) {
-    chrome.runtime.sendMessage({
-      type: 'preview-store',
-      id: previewId,
-      html: null,
-      error: `Fetch failed: ${error instanceof Error ? error.message : String(error)}`,
-    });
-  }
+  await openOrReusePreviewTab(rawUrl, enableJavaScript);
 }
