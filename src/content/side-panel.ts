@@ -1,7 +1,6 @@
 import { createViewportToggle } from './viewport-toggle';
-import { createZoomControl } from './zoom-control';
 import { getCachedSettings } from './settings';
-import { createBlobUrl, revokeBlobUrl } from './blob-url';
+import { setupPreviewFrameBridge, type PreviewFrameBridge } from './preview-frame-bridge';
 
 const PANEL_ID = 'html-preview-panel';
 const PANEL_IFRAME_ID = 'html-preview-panel-iframe';
@@ -10,9 +9,12 @@ const DEFAULT_WIDTH_PCT = 40;
 const MIN_WIDTH_PCT = 15;
 const MAX_WIDTH_PCT = 85;
 
+let panelBridge: PreviewFrameBridge | null = null;
+
 /**
  * Create a fixed side panel on the right of the page with a resize handle,
- * header, and sandboxed iframe.
+ * header, and an iframe pointing at preview-frame.html (manifest sandbox
+ * page) for safe rendering.
  * @returns The created panel element
  */
 export function createSidePanel(): HTMLElement {
@@ -32,7 +34,6 @@ export function createSidePanel(): HTMLElement {
     box-shadow: -2px 0 8px rgba(0,0,0,0.1);
   `;
 
-  // Resize handle — wider hit area for easier grabbing
   const resizeHandle = document.createElement('div');
   resizeHandle.style.cssText = `
     position: absolute;
@@ -43,7 +44,6 @@ export function createSidePanel(): HTMLElement {
     cursor: col-resize;
     z-index: 101;
   `;
-  // Visual indicator on hover
   resizeHandle.addEventListener('mouseenter', () => {
     resizeHandle.style.background = 'var(--color-accent-fg, #0969da)';
     resizeHandle.style.opacity = '0.4';
@@ -54,7 +54,6 @@ export function createSidePanel(): HTMLElement {
   });
   setupResize(resizeHandle, panel);
 
-  // Header
   const header = document.createElement('div');
   header.style.cssText = `
     padding: 8px 16px;
@@ -65,17 +64,16 @@ export function createSidePanel(): HTMLElement {
     flex-shrink: 0;
   `;
 
-  // Iframe
   const iframe = document.createElement('iframe');
   iframe.id = PANEL_IFRAME_ID;
-  const settings = getCachedSettings();
-  iframe.setAttribute('sandbox', settings.enableJavaScript ? 'allow-scripts' : '');
+  iframe.src = chrome.runtime.getURL('src/preview-frame.html');
   iframe.style.cssText = 'flex: 1; border: none; width: 100%;';
+
+  panelBridge = setupPreviewFrameBridge(iframe);
 
   const toolbar = document.createElement('div');
   toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 8px;';
   toolbar.appendChild(createViewportToggle(iframe));
-  toolbar.appendChild(createZoomControl(iframe, getCachedSettings().defaultZoom));
 
   panel.appendChild(resizeHandle);
   panel.appendChild(header);
@@ -97,15 +95,11 @@ export function showInPanel(html: string, fileName: string): void {
   let panel = document.getElementById(PANEL_ID);
   if (!panel) panel = createSidePanel();
 
-  const iframe = panel.querySelector('iframe') as HTMLIFrameElement;
-  // Revoke previous blob URL to prevent memory leaks
-  if (iframe.src && iframe.src.startsWith('blob:')) {
-    revokeBlobUrl(iframe.src);
+  const enableJavaScript = getCachedSettings().enableJavaScript;
+  if (panelBridge) {
+    panelBridge.render(html, enableJavaScript);
   }
-  const blobUrl = createBlobUrl(html);
-  iframe.src = blobUrl;
 
-  // Update header with file name and close button
   const header = panel.children[1] as HTMLElement;
   header.innerHTML = '';
 
@@ -116,7 +110,7 @@ export function showInPanel(html: string, fileName: string): void {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'btn btn-sm';
   closeBtn.id = PANEL_CLOSE_ID;
-  closeBtn.textContent = '\u2715';
+  closeBtn.textContent = '✕';
   closeBtn.addEventListener('click', closeSidePanel);
 
   header.appendChild(nameSpan);
@@ -124,11 +118,16 @@ export function showInPanel(html: string, fileName: string): void {
 }
 
 /**
- * Close and remove the side panel, restoring the page layout.
+ * Close and remove the side panel, restoring the page layout. Tears down
+ * the postMessage bridge.
  */
 export function closeSidePanel(): void {
   const panel = document.getElementById(PANEL_ID);
   if (panel) {
+    if (panelBridge) {
+      panelBridge.destroy();
+      panelBridge = null;
+    }
     panel.remove();
     restorePageLayout();
   }
@@ -141,7 +140,6 @@ export function closeSidePanel(): void {
  */
 function applyPageLayout(width: string): void {
   document.body.style.marginRight = width;
-  // Also constrain GitHub's main content containers for proper reflow
   const containers = document.querySelectorAll<HTMLElement>(
     '.Layout-main, .repository-content, .diff-view, [data-target="diff-layout.mainContainer"]'
   );
@@ -175,12 +173,11 @@ function setupResize(handle: HTMLElement, panel: HTMLElement): void {
   handle.addEventListener('mousedown', (e: MouseEvent) => {
     e.preventDefault();
 
-    // Overlay to prevent iframe from capturing mouse during drag
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;cursor:col-resize;';
     document.body.appendChild(overlay);
 
-    const onMouseMove = (moveEvent: MouseEvent) => {
+    const onMouseMove = (moveEvent: MouseEvent): void => {
       const newWidth = window.innerWidth - moveEvent.clientX;
       const pct = Math.max(MIN_WIDTH_PCT, Math.min(MAX_WIDTH_PCT, (newWidth / window.innerWidth) * 100));
       const widthStr = `${pct}%`;
@@ -188,7 +185,7 @@ function setupResize(handle: HTMLElement, panel: HTMLElement): void {
       applyPageLayout(widthStr);
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (): void => {
       overlay.remove();
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
