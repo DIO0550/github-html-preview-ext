@@ -91,6 +91,26 @@ export function createInlinePreview(
 }
 
 /**
+ * Re-render an existing inline preview's iframe with new HTML.
+ * @param container - The DOM element containing the preview
+ * @param html - New HTML content to render
+ * @param enableJavaScript - Whether to allow script execution (default true)
+ * @returns `true` if the existing wrapper was updated, `false` when no
+ *          preview wrapper/iframe/bridge was found (caller should fall back
+ *          to `createInlinePreview`).
+ */
+export function updateInlinePreviewContent(container: Element, html: string, enableJavaScript: boolean = true): boolean {
+  const wrapper = container.querySelector(`.${INLINE_WRAPPER_CLASS}`);
+  if (!wrapper) return false;
+  const iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null;
+  if (!iframe) return false;
+  const bridge = iframeBridges.get(iframe);
+  if (!bridge) return false;
+  bridge.render(html, enableJavaScript);
+  return true;
+}
+
+/**
  * Toggle inline preview visibility. Creates the preview on first call,
  * toggles between code and preview on subsequent calls.
  * @param container - The DOM element containing the preview
