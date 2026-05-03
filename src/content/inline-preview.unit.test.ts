@@ -3,6 +3,7 @@ import {
   createInlinePreview,
   toggleInlinePreview,
   removeInlinePreview,
+  updateInlinePreviewContent,
 } from './inline-preview';
 
 let postMessageSpy: ReturnType<typeof vi.fn>;
@@ -154,6 +155,25 @@ it('updates iframe height when preview-frame reports a resize', () => {
   }));
 
   expect(iframe.style.height).toBe('1500px');
+});
+
+it('returns false from updateInlinePreviewContent when no wrapper exists', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  const result = updateInlinePreviewContent(container, '<html><body>New</body></html>');
+
+  expect(result).toBe(false);
+});
+
+it('returns true from updateInlinePreviewContent when an existing wrapper is re-rendered', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  createInlinePreview(container, '<html><body>Old</body></html>');
+  const result = updateInlinePreviewContent(container, '<html><body>New</body></html>', true);
+
+  expect(result).toBe(true);
 });
 
 it('hides the code container and inserts the wrapper after it', () => {
