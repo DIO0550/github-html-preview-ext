@@ -2,13 +2,14 @@ import type { ExtensionSettings } from './settings';
 import { getPageType, extractOwnerRepo, matchesWhitelist } from './url-utils';
 import { addPreviewButtons, findHtmlFileHeaders, getRawUrl, getBlobPageRawUrl } from './github-dom';
 import { createBatchPreviewButton } from './batch-preview';
-import { createInlinePreview } from './inline-preview';
+import { createInlinePreview, updateInlinePreviewContent } from './inline-preview';
 import { fetchPreviewHtml } from './html-fetcher';
 import { hasActivePreviewTab, updatePreviewTab } from './preview-tab-manager';
 
 const BATCH_BUTTON_SELECTOR = '.html-preview-batch-btn';
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
 const autoPreviewInFlight = new WeakSet<Element>();
+const inlinePreviewRawUrls = new WeakMap<Element, string>();
 
 let lastBlobRawUrl: string | null = null;
 
@@ -65,6 +66,8 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
 
 /**
  * Auto-preview all HTML files in a PR that don't already have an inline preview.
+ * If a container already has a preview but the file's raw URL has changed
+ * (e.g. user switched files in single-file mode), re-render it in place.
  * @param defaultZoom - Zoom percentage for new previews
  * @param enableJavaScript - Whether to enable JS in previews
  */
@@ -75,25 +78,13 @@ async function autoPreviewPrFiles(defaultZoom: number, enableJavaScript: boolean
     if (!rawUrl) continue;
     const container = header.closest('[id^="diff-"]') ?? header.parentElement;
     if (!container) continue;
-    if (container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) continue;
-    if (autoPreviewInFlight.has(container)) continue;
-    autoPreviewInFlight.add(container);
-
-    try {
-      const html = await fetchPreviewHtml(rawUrl, enableJavaScript);
-      if (!container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) {
-        createInlinePreview(container, html, defaultZoom, enableJavaScript);
-      }
-    } catch {
-      // Continue with remaining files
-    } finally {
-      autoPreviewInFlight.delete(container);
-    }
+    await autoPreviewContainer(container, rawUrl, defaultZoom, enableJavaScript);
   }
 }
 
 /**
- * Auto-preview the HTML file on a blob page.
+ * Auto-preview the HTML file on a blob page. Re-renders an existing inline
+ * preview when the user switches to a different file (raw URL change).
  * @param defaultZoom - Zoom percentage for the preview
  * @param enableJavaScript - Whether to enable JS in previews
  */
@@ -105,17 +96,38 @@ async function autoPreviewBlobPage(defaultZoom: number, enableJavaScript: boolea
     '[class*="BlobViewContent-module"], [class*="CodeView-module"], .repository-content'
   );
   if (!container) return;
-  if (container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) return;
+  await autoPreviewContainer(container, rawUrl, defaultZoom, enableJavaScript);
+}
+
+/**
+ * Shared auto-preview logic for a single container: create the preview if
+ * absent, update it in place if the raw URL changed, otherwise no-op.
+ * @param container - DOM element that hosts the inline preview
+ * @param rawUrl - Raw URL to fetch HTML from
+ * @param defaultZoom - Zoom percentage applied when creating a new preview
+ * @param enableJavaScript - Whether to allow JS execution in the iframe
+ */
+async function autoPreviewContainer(
+  container: Element,
+  rawUrl: string,
+  defaultZoom: number,
+  enableJavaScript: boolean
+): Promise<void> {
+  const hasWrapper = container.querySelector(`.${INLINE_WRAPPER_CLASS}`) !== null;
+  if (hasWrapper && inlinePreviewRawUrls.get(container) === rawUrl) return;
   if (autoPreviewInFlight.has(container)) return;
   autoPreviewInFlight.add(container);
 
   try {
-    const html = await fetchPreviewHtml(rawUrl);
-    if (!container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) {
+    const html = await fetchPreviewHtml(rawUrl, enableJavaScript);
+    if (container.querySelector(`.${INLINE_WRAPPER_CLASS}`)) {
+      updateInlinePreviewContent(container, html, enableJavaScript);
+    } else {
       createInlinePreview(container, html, defaultZoom, enableJavaScript);
     }
+    inlinePreviewRawUrls.set(container, rawUrl);
   } catch {
-    // Silently fail
+    // Silently fail; next observer tick may retry
   } finally {
     autoPreviewInFlight.delete(container);
   }
