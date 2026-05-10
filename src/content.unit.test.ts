@@ -14,6 +14,13 @@ vi.mock('./content/batch-preview', () => ({
 
 vi.mock('./content/inline-preview', () => ({
   createInlinePreview: vi.fn(),
+  removeInlinePreview: vi.fn(),
+  updateInlinePreviewContent: vi.fn(() => false),
+}));
+
+vi.mock('./content/side-panel', () => ({
+  isSidePanelOpen: vi.fn(() => false),
+  updateSidePanelContent: vi.fn(),
 }));
 
 vi.mock('./content/html-fetcher', () => ({
@@ -30,7 +37,8 @@ import { addPreviewButtons, findHtmlFileHeaders, getRawUrl, getBlobPageRawUrl } 
 import { createInlinePreview } from './content/inline-preview';
 import { fetchPreviewHtml } from './content/html-fetcher';
 import { hasActivePreviewTab, updatePreviewTab, clearPreviewTab } from './content/preview-tab-manager';
-import { handlePageUpdate, resetLastBlobUrl } from './content/page-handler';
+import { handlePageUpdate } from './content/page-handler';
+import { resetAllAutoUpdateCaches } from './content/auto-update-cache';
 
 beforeEach(() => {
   vi.mocked(addPreviewButtons).mockReset();
@@ -42,7 +50,7 @@ beforeEach(() => {
   vi.mocked(hasActivePreviewTab).mockReset();
   vi.mocked(updatePreviewTab).mockReset();
   vi.mocked(clearPreviewTab).mockReset();
-  resetLastBlobUrl();
+  resetAllAutoUpdateCaches();
   document.body.innerHTML = '';
 });
 

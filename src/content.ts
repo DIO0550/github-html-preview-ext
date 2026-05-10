@@ -1,9 +1,19 @@
 import { startObserving } from './content/observer';
-import { loadSettings } from './content/settings';
+import {
+  getCachedSettings,
+  loadSettings,
+  subscribeSettingsChanges,
+} from './content/settings';
 import { handlePageUpdate } from './content/page-handler';
+import { resetAllAutoUpdateCaches } from './content/auto-update-cache';
 
-loadSettings().then((settings) => {
+void loadSettings().then(() => {
   startObserving(() => {
-    handlePageUpdate(location.pathname, settings);
+    handlePageUpdate(location.pathname, getCachedSettings());
+  });
+
+  subscribeSettingsChanges((next) => {
+    resetAllAutoUpdateCaches();
+    handlePageUpdate(location.pathname, next);
   });
 });
