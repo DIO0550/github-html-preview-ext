@@ -62,6 +62,11 @@ export async function openOrReusePreviewTab(
  * Push fresh HTML into the existing preview tab. Does nothing if no preview
  * tab is currently tracked. If the background reports the tab no longer
  * exists, the cached id is cleared so the next click opens a new tab.
+ *
+ * The tabId is captured at entry time so that an overlapping call which
+ * receives `ok: false` and clears `currentPreviewTabId` cannot make this
+ * invocation send a `tabId: null` message — `chrome.tabs.sendMessage` on
+ * the background side throws "No matching signature" for non-integer tabIds.
  * @param rawUrl - Raw GitHub URL of the HTML file to preview
  * @param enableJavaScript - Whether to enable JS execution in the preview
  */
@@ -69,17 +74,18 @@ export async function updatePreviewTab(
   rawUrl: string,
   enableJavaScript: boolean
 ): Promise<void> {
-  if (currentPreviewTabId === null) return;
+  const tabId = currentPreviewTabId;
+  if (tabId === null) return;
 
   const html = await fetchPreviewHtml(rawUrl, enableJavaScript);
   const message: UpdatePreviewMessage = {
     type: 'update-preview',
-    tabId: currentPreviewTabId,
+    tabId,
     html,
     enableJavaScript,
   };
   const response: UpdatePreviewResponse = await chrome.runtime.sendMessage(message);
-  if (!response.ok) {
+  if (!response.ok && currentPreviewTabId === tabId) {
     currentPreviewTabId = null;
   }
 }
