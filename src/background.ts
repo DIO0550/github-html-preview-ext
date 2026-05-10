@@ -42,7 +42,7 @@ function handleOpenPreviewTab(
 ): void {
   const { html, enableJavaScript, existingTabId } = message;
 
-  if (existingTabId == null) {
+  if (existingTabId == null || !Number.isInteger(existingTabId)) {
     createPreviewTab(html, enableJavaScript, sendResponse);
     return;
   }
@@ -67,6 +67,8 @@ function handleOpenPreviewTab(
 
 /**
  * Handle the `update-preview` message — forward the new HTML to the preview tab.
+ * Defensively rejects messages with a non-integer tabId so a stale content
+ * script can't crash the service worker on `chrome.tabs.sendMessage`.
  * @param message - The incoming update-preview message
  * @param sendResponse - Callback to deliver the response to the sender
  */
@@ -74,6 +76,10 @@ function handleUpdatePreview(
   message: { tabId: number; html: string; enableJavaScript: boolean },
   sendResponse: SendResponse
 ): void {
+  if (!Number.isInteger(message.tabId)) {
+    sendResponse({ ok: false, error: 'Invalid tabId' });
+    return;
+  }
   chrome.tabs.sendMessage(message.tabId, {
     type: 'preview-update',
     html: message.html,
@@ -85,6 +91,7 @@ function handleUpdatePreview(
 
 /**
  * Handle the `check-preview-tab` message — verify whether the tab still exists.
+ * Defensively rejects non-integer tabIds.
  * @param message - The incoming check-preview-tab message
  * @param sendResponse - Callback to deliver the response to the sender
  */
@@ -92,6 +99,10 @@ function handleCheckPreviewTab(
   message: { tabId: number },
   sendResponse: SendResponse
 ): void {
+  if (!Number.isInteger(message.tabId)) {
+    sendResponse({ exists: false });
+    return;
+  }
   chrome.tabs.get(message.tabId)
     .then(() => sendResponse({ exists: true }))
     .catch(() => sendResponse({ exists: false }));

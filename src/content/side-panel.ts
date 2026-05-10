@@ -1,10 +1,12 @@
 import { createViewportToggle } from './viewport-toggle';
 import { getCachedSettings } from './settings';
 import { setupPreviewFrameBridge, type PreviewFrameBridge } from './preview-frame-bridge';
+import { resetLastPanelRawUrl } from './auto-update-cache';
 
 const PANEL_ID = 'html-preview-panel';
 const PANEL_IFRAME_ID = 'html-preview-panel-iframe';
 const PANEL_CLOSE_ID = 'html-preview-panel-close';
+const PANEL_HEADER_TESTID = 'html-preview-panel-header';
 const DEFAULT_WIDTH_PCT = 40;
 const MIN_WIDTH_PCT = 15;
 const MAX_WIDTH_PCT = 85;
@@ -12,12 +14,24 @@ const MAX_WIDTH_PCT = 85;
 let panelBridge: PreviewFrameBridge | null = null;
 
 /**
+ * @returns `true` when the side panel is currently mounted in the DOM
+ */
+export function isSidePanelOpen(): boolean {
+  return document.getElementById(PANEL_ID) !== null;
+}
+
+/**
  * Create a fixed side panel on the right of the page with a resize handle,
  * header, and an iframe pointing at preview-frame.html (manifest sandbox
- * page) for safe rendering.
+ * page) for safe rendering. The optional `onReady` callback fires once the
+ * panel is fully attached and the bridge is initialised, allowing the
+ * caller to drive the first render without needing to import this module's
+ * internals.
+ * @param onReady - Optional callback invoked synchronously after the panel
+ *                  is in the DOM and the bridge is set up
  * @returns The created panel element
  */
-export function createSidePanel(): HTMLElement {
+export function createSidePanel(onReady?: () => void): HTMLElement {
   const panel = document.createElement('div');
   panel.id = PANEL_ID;
   panel.style.cssText = `
@@ -55,6 +69,7 @@ export function createSidePanel(): HTMLElement {
   setupResize(resizeHandle, panel);
 
   const header = document.createElement('div');
+  header.dataset.testid = PANEL_HEADER_TESTID;
   header.style.cssText = `
     padding: 8px 16px;
     border-bottom: 1px solid var(--color-border-default, #d0d7de);
@@ -83,7 +98,28 @@ export function createSidePanel(): HTMLElement {
 
   applyPageLayout(`${DEFAULT_WIDTH_PCT}%`);
 
+  onReady?.();
+
   return panel;
+}
+
+/**
+ * Re-render an already-open side panel with new content. No-op when the
+ * panel is not currently mounted; this lets callers drive auto-update
+ * without accidentally re-opening the panel after the user closed it.
+ * @param html - HTML content to render in the panel iframe
+ * @param fileName - File name to display in the panel header
+ */
+export function updateSidePanelContent(html: string, fileName: string): void {
+  const panel = document.getElementById(PANEL_ID);
+  if (!panel || !panelBridge) return;
+
+  const enableJavaScript = getCachedSettings().enableJavaScript;
+  panelBridge.render(html, enableJavaScript);
+
+  const header = panel.querySelector<HTMLElement>(`[data-testid="${PANEL_HEADER_TESTID}"]`);
+  if (!header) return;
+  renderPanelHeader(header, fileName);
 }
 
 /**
@@ -92,15 +128,36 @@ export function createSidePanel(): HTMLElement {
  * @param fileName - File name to display in the panel header
  */
 export function showInPanel(html: string, fileName: string): void {
-  let panel = document.getElementById(PANEL_ID);
-  if (!panel) panel = createSidePanel();
+  if (!isSidePanelOpen()) createSidePanel();
+  updateSidePanelContent(html, fileName);
+}
 
-  const enableJavaScript = getCachedSettings().enableJavaScript;
-  if (panelBridge) {
-    panelBridge.render(html, enableJavaScript);
+/**
+ * Close and remove the side panel, restoring the page layout. Tears down
+ * the postMessage bridge and clears the panel rawUrl cache so a future
+ * open will re-sync from scratch.
+ */
+export function closeSidePanel(): void {
+  const panel = document.getElementById(PANEL_ID);
+  if (panel) {
+    if (panelBridge) {
+      panelBridge.destroy();
+      panelBridge = null;
+    }
+    panel.remove();
+    restorePageLayout();
   }
+  resetLastPanelRawUrl();
+}
 
-  const header = panel.children[1] as HTMLElement;
+/**
+ * Replace the panel header's contents with a file-name label and a close
+ * button. Extracted so it can be reused from both `createSidePanel` (via
+ * `updateSidePanelContent`) and any future direct callers.
+ * @param header - Header element returned by `panel.querySelector`
+ * @param fileName - File name to display
+ */
+function renderPanelHeader(header: HTMLElement, fileName: string): void {
   header.innerHTML = '';
 
   const nameSpan = document.createElement('span');
@@ -115,22 +172,6 @@ export function showInPanel(html: string, fileName: string): void {
 
   header.appendChild(nameSpan);
   header.appendChild(closeBtn);
-}
-
-/**
- * Close and remove the side panel, restoring the page layout. Tears down
- * the postMessage bridge.
- */
-export function closeSidePanel(): void {
-  const panel = document.getElementById(PANEL_ID);
-  if (panel) {
-    if (panelBridge) {
-      panelBridge.destroy();
-      panelBridge = null;
-    }
-    panel.remove();
-    restorePageLayout();
-  }
 }
 
 /**

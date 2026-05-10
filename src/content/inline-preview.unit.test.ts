@@ -3,6 +3,8 @@ import {
   createInlinePreview,
   toggleInlinePreview,
   removeInlinePreview,
+  updateInlinePreviewContent,
+  dispatchPreviewToBridge,
 } from './inline-preview';
 
 let postMessageSpy: ReturnType<typeof vi.fn>;
@@ -154,6 +156,80 @@ it('updates iframe height when preview-frame reports a resize', () => {
   }));
 
   expect(iframe.style.height).toBe('1500px');
+});
+
+it('returns false from updateInlinePreviewContent when no wrapper exists', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  const result = updateInlinePreviewContent(container, '<html><body>New</body></html>');
+
+  expect(result).toBe(false);
+});
+
+it('returns true from updateInlinePreviewContent when an existing wrapper is re-rendered', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+
+  createInlinePreview(container, '<html><body>Old</body></html>');
+  const result = updateInlinePreviewContent(container, '<html><body>New</body></html>', true);
+
+  expect(result).toBe(true);
+});
+
+it('returns false from updateInlinePreviewContent when wrapper exists but iframe is missing', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  // Create an empty wrapper without an iframe
+  const wrapper = document.createElement('div');
+  wrapper.className = 'html-preview-inline';
+  container.appendChild(wrapper);
+
+  const result = updateInlinePreviewContent(container, '<html><body>No iframe</body></html>');
+
+  expect(result).toBe(false);
+});
+
+it('returns false from updateInlinePreviewContent when the iframe has no registered bridge', () => {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const wrapper = document.createElement('div');
+  wrapper.className = 'html-preview-inline';
+  const iframe = document.createElement('iframe');
+  wrapper.appendChild(iframe);
+  container.appendChild(wrapper);
+
+  const result = updateInlinePreviewContent(container, '<html><body>No bridge</body></html>');
+
+  expect(result).toBe(false);
+});
+
+// dispatchPreviewToBridge
+
+it('returns false when bridge is undefined', () => {
+  expect(dispatchPreviewToBridge(undefined, '<p>x</p>', true)).toBe(false);
+});
+
+it('returns true and forwards (html, enableJavaScript) when bridge.render succeeds', () => {
+  const render = vi.fn();
+  const bridge = { render, destroy: vi.fn() };
+
+  const ok = dispatchPreviewToBridge(bridge, '<p>html</p>', true);
+
+  expect(ok).toBe(true);
+  expect(render).toHaveBeenCalledTimes(1);
+  expect(render).toHaveBeenCalledWith('<p>html</p>', true);
+});
+
+it('returns false when bridge.render throws', () => {
+  const bridge = {
+    render: () => {
+      throw new Error('boom');
+    },
+    destroy: vi.fn(),
+  };
+
+  expect(dispatchPreviewToBridge(bridge, '<p>x</p>', false)).toBe(false);
 });
 
 it('hides the code container and inserts the wrapper after it', () => {

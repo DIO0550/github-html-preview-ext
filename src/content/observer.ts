@@ -3,6 +3,7 @@ const DEBOUNCE_DELAY_MS = 150;
 let observer: MutationObserver | null = null;
 let turboHandler: (() => void) | null = null;
 let popstateHandler: (() => void) | null = null;
+let hashchangeHandler: (() => void) | null = null;
 let originalPushState: typeof history.pushState | null = null;
 let originalReplaceState: typeof history.replaceState | null = null;
 
@@ -84,6 +85,11 @@ export function startObserving(callback: () => void): void {
   popstateHandler = () => callback();
   window.addEventListener('popstate', popstateHandler);
 
+  // `hashchange` only matters for direct `location.hash =` assignments —
+  // pushState-driven hash changes are already covered by the history hook.
+  hashchangeHandler = () => callback();
+  window.addEventListener('hashchange', hashchangeHandler);
+
   // GitHub SPA navigation uses pushState; popstate does not fire for it.
   hookHistoryApi(callback);
 }
@@ -103,6 +109,10 @@ export function stopObserving(): void {
   if (popstateHandler) {
     window.removeEventListener('popstate', popstateHandler);
     popstateHandler = null;
+  }
+  if (hashchangeHandler) {
+    window.removeEventListener('hashchange', hashchangeHandler);
+    hashchangeHandler = null;
   }
   unhookHistoryApi();
 }

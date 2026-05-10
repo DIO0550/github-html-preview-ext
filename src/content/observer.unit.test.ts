@@ -137,3 +137,24 @@ it('does not invoke callback after stopObserving when pushState is called', () =
   history.pushState({}, '', '/after-stop');
   expect(callback).not.toHaveBeenCalled();
 });
+
+// hashchange tests
+
+it('calls callback on hashchange event', () => {
+  const callback = vi.fn();
+  startObserving(callback);
+  callback.mockClear();
+
+  window.dispatchEvent(new Event('hashchange'));
+  expect(callback).toHaveBeenCalledOnce();
+});
+
+it('does not invoke callback after stopObserving when hashchange fires', () => {
+  const callback = vi.fn();
+  startObserving(callback);
+  callback.mockClear();
+  stopObserving();
+
+  window.dispatchEvent(new Event('hashchange'));
+  expect(callback).not.toHaveBeenCalled();
+});

@@ -1,4 +1,5 @@
 import { createViewportToggle } from './viewport-toggle';
+import { createZoomControl } from './zoom-control';
 import { setupPreviewFrameBridge, type PreviewFrameBridge } from './preview-frame-bridge';
 
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
@@ -38,14 +39,15 @@ function findCodeContainer(container: Element): HTMLElement | null {
  * isolated from both the GitHub page and the extension's privileged origin.
  * @param container - The DOM element containing the code
  * @param html - HTML content to render (should already have `<base>` injected)
- * @param _defaultZoom - Reserved for future zoom support via postMessage bridge
+ * @param defaultZoom - Initial zoom percentage applied via the postMessage
+ *                      zoom bridge
  * @param enableJavaScript - Whether to allow script execution in the iframe (default true)
  * @returns The created iframe element
  */
 export function createInlinePreview(
   container: Element,
   html: string,
-  _defaultZoom: number = 100,
+  defaultZoom: number = 100,
   enableJavaScript: boolean = true
 ): HTMLIFrameElement {
   const wrapper = document.createElement('div');
@@ -73,6 +75,9 @@ export function createInlinePreview(
 
   const toolbar = document.createElement('div');
   toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 0;';
+  toolbar.appendChild(createZoomControl(iframe, defaultZoom, (zoomPercent) => {
+    bridge.setZoom(zoomPercent);
+  }));
   toolbar.appendChild(createViewportToggle(iframe));
 
   wrapper.appendChild(toolbar);
@@ -88,6 +93,52 @@ export function createInlinePreview(
   }
 
   return iframe;
+}
+
+/**
+ * Push HTML through a preview-frame bridge, swallowing any synchronous
+ * exception thrown by the bridge so callers can decide whether to fall
+ * back to a full re-create. Extracted from `updateInlinePreviewContent`
+ * so tests can drive it with a mock bridge directly.
+ * @param bridge - Bridge instance, or `undefined` when none is registered
+ * @param html - HTML body to render
+ * @param enableJavaScript - Whether the inner iframe should retain
+ *                           `allow-scripts` permission
+ * @returns `true` when the bridge accepted the render, `false` when no
+ *          bridge was supplied or the bridge threw
+ */
+export function dispatchPreviewToBridge(
+  bridge: PreviewFrameBridge | undefined,
+  html: string,
+  enableJavaScript: boolean
+): boolean {
+  if (!bridge) return false;
+  try {
+    bridge.render(html, enableJavaScript);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Re-render an existing inline preview's iframe with new HTML. Looks up
+ * the bridge attached to the iframe and delegates to
+ * `dispatchPreviewToBridge`.
+ * @param container - The DOM element containing the preview
+ * @param html - New HTML content to render
+ * @param enableJavaScript - Whether to allow script execution (default true)
+ * @returns `true` if the existing wrapper was updated, `false` when no
+ *          preview wrapper/iframe/bridge was found (caller should fall back
+ *          to `createInlinePreview`).
+ */
+export function updateInlinePreviewContent(container: Element, html: string, enableJavaScript: boolean = true): boolean {
+  const wrapper = container.querySelector(`.${INLINE_WRAPPER_CLASS}`);
+  if (!wrapper) return false;
+  const iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null;
+  if (!iframe) return false;
+  const bridge = iframeBridges.get(iframe);
+  return dispatchPreviewToBridge(bridge, html, enableJavaScript);
 }
 
 /**

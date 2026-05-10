@@ -1,9 +1,11 @@
 import { it, expect, beforeEach, vi } from 'vitest';
-import { loadSettings } from './settings';
+import { loadSettings, subscribeSettingsChanges } from './settings';
 import { normalizeSettings } from '../shared/settings-types';
 
 beforeEach(() => {
   vi.mocked(chrome.storage.sync.get).mockReset();
+  vi.mocked(chrome.storage.onChanged.addListener).mockReset();
+  vi.mocked(chrome.storage.onChanged.removeListener).mockReset();
 });
 
 // storage が空の場合にデフォルト値を返す
@@ -91,4 +93,70 @@ it('clamps out-of-range defaultZoom', () => {
 
 it('falls back defaultZoom for non-numeric values', () => {
   expect(normalizeSettings({ allowedRepos: [], autoPreview: false, defaultZoom: 'abc' }).defaultZoom).toBe(100);
+});
+
+// subscribeSettingsChanges
+
+it('subscribeSettingsChanges registers an onChanged listener', () => {
+  subscribeSettingsChanges(() => {});
+
+  expect(chrome.storage.onChanged.addListener).toHaveBeenCalledTimes(1);
+});
+
+it('unsubscribe removes the registered listener', () => {
+  const unsubscribe = subscribeSettingsChanges(() => {});
+
+  unsubscribe();
+
+  expect(chrome.storage.onChanged.removeListener).toHaveBeenCalledTimes(1);
+  const registered = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0][0];
+  const removed = vi.mocked(chrome.storage.onChanged.removeListener).mock.calls[0][0];
+  expect(removed).toBe(registered);
+});
+
+it('invokes onChange when sync storage emits a watched-key diff', async () => {
+  vi.mocked(chrome.storage.sync.get).mockResolvedValue({
+    allowedRepos: ['x/y'],
+    autoPreview: true,
+    defaultZoom: 120,
+    enableJavaScript: false,
+  });
+  const onChange = vi.fn();
+  subscribeSettingsChanges(onChange);
+  const listener = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0][0];
+
+  listener({ enableJavaScript: { newValue: false, oldValue: true } }, 'sync');
+
+  await vi.waitFor(() => {
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+  expect(onChange).toHaveBeenCalledWith({
+    allowedRepos: ['x/y'],
+    autoPreview: true,
+    defaultZoom: 120,
+    enableJavaScript: false,
+  });
+});
+
+it('does not invoke onChange when the area is not sync', async () => {
+  const onChange = vi.fn();
+  subscribeSettingsChanges(onChange);
+  const listener = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0][0];
+
+  listener({ enableJavaScript: { newValue: false, oldValue: true } }, 'local');
+
+  // Give microtasks a chance.
+  await Promise.resolve();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it('does not invoke onChange when only non-watched keys changed', async () => {
+  const onChange = vi.fn();
+  subscribeSettingsChanges(onChange);
+  const listener = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0][0];
+
+  listener({ someOtherKey: { newValue: 1, oldValue: 0 } }, 'sync');
+
+  await Promise.resolve();
+  expect(onChange).not.toHaveBeenCalled();
 });

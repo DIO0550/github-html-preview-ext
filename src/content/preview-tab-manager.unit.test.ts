@@ -1,21 +1,28 @@
 import { it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('./html-fetcher', () => ({
+  fetchPreviewHtml: vi.fn(),
+}));
+
+vi.mock('./auto-update-cache', () => ({
+  resetLastPrFilesTabRawUrl: vi.fn(),
+}));
+
 import {
   openOrReusePreviewTab,
   updatePreviewTab,
   hasActivePreviewTab,
   clearPreviewTab,
 } from './preview-tab-manager';
-
-vi.mock('./html-fetcher', () => ({
-  fetchPreviewHtml: vi.fn(),
-}));
-
 import { fetchPreviewHtml } from './html-fetcher';
+import { resetLastPrFilesTabRawUrl } from './auto-update-cache';
 
 beforeEach(() => {
   vi.mocked(chrome.runtime.sendMessage).mockReset();
   vi.mocked(fetchPreviewHtml).mockReset();
+  vi.mocked(resetLastPrFilesTabRawUrl).mockClear();
   clearPreviewTab();
+  vi.mocked(resetLastPrFilesTabRawUrl).mockClear();
 });
 
 it('sends open-preview-tab without existingTabId on first call', async () => {
@@ -105,4 +112,65 @@ it('clearPreviewTab resets the tabId', async () => {
 
   clearPreviewTab();
   expect(hasActivePreviewTab()).toBe(false);
+});
+
+it('clearPreviewTab resets the PR Files tab rawUrl tracker', () => {
+  clearPreviewTab();
+  expect(resetLastPrFilesTabRawUrl).toHaveBeenCalled();
+});
+
+it('openOrReusePreviewTab invokes onReady once after the tabId is cached', async () => {
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>x</p>');
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ tabId: 99, error: null });
+  const onReady = vi.fn();
+
+  await openOrReusePreviewTab('https://example.com/x.html', true, onReady);
+
+  expect(onReady).toHaveBeenCalledTimes(1);
+  expect(hasActivePreviewTab()).toBe(true);
+});
+
+it('openOrReusePreviewTab does not invoke onReady when no tabId is returned', async () => {
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>x</p>');
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ tabId: null, error: 'denied' });
+  const onReady = vi.fn();
+
+  await openOrReusePreviewTab('https://example.com/x.html', true, onReady);
+
+  expect(onReady).not.toHaveBeenCalled();
+});
+
+it('updatePreviewTab sends the captured tabId even if currentPreviewTabId is cleared mid-flight', async () => {
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>orig</p>');
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ tabId: 42, error: null });
+  await openOrReusePreviewTab('https://example.com/file.html', true);
+
+  // First updatePreviewTab is in flight; while awaiting fetchPreviewHtml,
+  // an overlapping ok:false response clears currentPreviewTabId. The
+  // captured tabId must still be used in the eventual sendMessage.
+  let resolveFetch: (v: string) => void = () => {};
+  vi.mocked(fetchPreviewHtml).mockImplementationOnce(
+    () =>
+      new Promise<string>((resolve) => {
+        resolveFetch = resolve;
+      })
+  );
+  const sendCalls: unknown[] = [];
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation(async (msg: unknown) => {
+    sendCalls.push(msg);
+    return { ok: true, error: null };
+  });
+
+  const updateInFlight = updatePreviewTab('https://example.com/other.html', true);
+  // Simulate concurrent clear of the cached tabId.
+  clearPreviewTab();
+
+  resolveFetch('<p>new</p>');
+  await updateInFlight;
+
+  // The eventual update message must still carry the integer tabId 42,
+  // never null.
+  expect(sendCalls).toEqual([
+    expect.objectContaining({ type: 'update-preview', tabId: 42 }),
+  ]);
 });

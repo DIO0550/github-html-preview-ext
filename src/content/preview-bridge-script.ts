@@ -14,10 +14,17 @@
  */
 export function createPreviewBridgeScript(): string {
   return `(function(){
+  var pendingZoom = null;
   function postSize() {
     try {
       var h = document.documentElement ? document.documentElement.scrollHeight : 0;
       parent.postMessage({ type: 'preview-content-size', scrollHeight: h }, '*');
+    } catch (e) {}
+  }
+  function applyPendingZoom() {
+    if (pendingZoom === null || !document.body) return;
+    try {
+      document.body.style.zoom = String(pendingZoom / 100);
     } catch (e) {}
   }
   function startObserver() {
@@ -28,13 +35,21 @@ export function createPreviewBridgeScript(): string {
       });
     } catch (e) {}
   }
+  window.addEventListener('message', function(e) {
+    var d = e && e.data;
+    if (d && d.type === 'preview-content-zoom' && typeof d.zoomPercent === 'number') {
+      pendingZoom = d.zoomPercent;
+      applyPendingZoom();
+    }
+  });
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    applyPendingZoom();
     postSize();
     startObserver();
   } else {
-    window.addEventListener('DOMContentLoaded', function(){ postSize(); startObserver(); });
+    window.addEventListener('DOMContentLoaded', function(){ applyPendingZoom(); postSize(); startObserver(); });
   }
-  window.addEventListener('load', postSize);
+  window.addEventListener('load', function(){ applyPendingZoom(); postSize(); });
 })();`;
 }
 

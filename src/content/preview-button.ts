@@ -4,6 +4,7 @@ import { toggleInlinePreview } from './inline-preview';
 import { showInPanel } from './side-panel';
 import { getFilePath } from './github-dom';
 import { getCachedSettings } from './settings';
+import { handlePageUpdate } from './page-handler';
 
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
 const BUTTON_CLASSES = 'html-preview-btn btn btn-sm';
@@ -102,6 +103,10 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
     try {
       const html = await fetchPreviewHtml(rawUrl, getCachedSettings().enableJavaScript);
       showInPanel(html, fileName);
+      // Initial sync: re-run page handling so the panel tracks the
+      // currently-active file when the user has scrolled away from
+      // the file whose Panel button they clicked.
+      handlePageUpdate(location.pathname, getCachedSettings());
       updateButtonState(panelBtn, 'idle');
     } catch (e) {
       updateButtonState(panelBtn, 'error', e instanceof Error ? e.message : 'Preview failed');
@@ -126,7 +131,9 @@ export function addPreviewButtonToHeader(header: Element, rawUrl: string): void 
 
   // Preview button (new tab) — inserted last so it appears first
   const previewBtn = createPreviewButton('Preview', () => {
-    fetchAndPreview(rawUrl, getCachedSettings().enableJavaScript);
+    void fetchAndPreview(rawUrl, getCachedSettings().enableJavaScript, () => {
+      handlePageUpdate(location.pathname, getCachedSettings());
+    });
   });
   insertPreviewButton(header, previewBtn);
 }

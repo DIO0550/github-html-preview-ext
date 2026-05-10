@@ -57,7 +57,13 @@ export async function fetchPreviewHtml(rawUrl: string, enableJavaScript: boolean
  * existing preview tab when one is tracked, otherwise opens a new tab.
  * @param rawUrl - The raw GitHub URL of the HTML file
  * @param enableJavaScript - Whether to enable JS execution in the preview (default true)
+ * @param onReady - Optional callback invoked once the preview tab id has been
+ *                  recorded; used to drive an initial sync.
  */
-export async function fetchAndPreview(rawUrl: string, enableJavaScript: boolean = true): Promise<void> {
-  await openOrReusePreviewTab(rawUrl, enableJavaScript);
+export async function fetchAndPreview(
+  rawUrl: string,
+  enableJavaScript: boolean = true,
+  onReady?: () => void
+): Promise<void> {
+  await openOrReusePreviewTab(rawUrl, enableJavaScript, onReady);
 }

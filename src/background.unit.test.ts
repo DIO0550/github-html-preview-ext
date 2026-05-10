@@ -148,3 +148,45 @@ it('returns exists=false when chrome.tabs.get rejects', async () => {
   await new Promise(r => setTimeout(r, 0));
   expect(sendResponse).toHaveBeenCalledWith({ exists: false });
 });
+
+// Defensive integer guards (regression for "tabs.sendMessage: No matching signature")
+
+it('rejects update-preview when tabId is null without invoking chrome.tabs.sendMessage', async () => {
+  const sendResponse = vi.fn();
+  listener(
+    { type: 'update-preview', tabId: null, html: '<p>x</p>', enableJavaScript: true },
+    sender,
+    sendResponse
+  );
+
+  await new Promise(r => setTimeout(r, 0));
+  expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+  expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
+});
+
+it('rejects check-preview-tab when tabId is null without invoking chrome.tabs.get', async () => {
+  const sendResponse = vi.fn();
+  listener({ type: 'check-preview-tab', tabId: null }, sender, sendResponse);
+
+  await new Promise(r => setTimeout(r, 0));
+  expect(chrome.tabs.get).not.toHaveBeenCalled();
+  expect(sendResponse).toHaveBeenCalledWith({ exists: false });
+});
+
+it('falls back to a new tab when open-preview-tab existingTabId is non-integer', async () => {
+  vi.mocked(chrome.tabs.create).mockImplementation(((createProps: chrome.tabs.CreateProperties) => {
+    return Promise.resolve({ id: 33, url: createProps.url } as chrome.tabs.Tab);
+  }) as typeof chrome.tabs.create);
+
+  const sendResponse = vi.fn();
+  listener(
+    { type: 'open-preview-tab', html: '<p>x</p>', enableJavaScript: true, existingTabId: 'abc' },
+    sender,
+    sendResponse
+  );
+
+  await new Promise(r => setTimeout(r, 0));
+  expect(chrome.tabs.get).not.toHaveBeenCalled();
+  expect(chrome.tabs.create).toHaveBeenCalled();
+  expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ tabId: 33 }));
+});
