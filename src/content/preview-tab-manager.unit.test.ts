@@ -1,21 +1,28 @@
 import { it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('./html-fetcher', () => ({
+  fetchPreviewHtml: vi.fn(),
+}));
+
+vi.mock('./auto-update-cache', () => ({
+  resetLastPrFilesTabRawUrl: vi.fn(),
+}));
+
 import {
   openOrReusePreviewTab,
   updatePreviewTab,
   hasActivePreviewTab,
   clearPreviewTab,
 } from './preview-tab-manager';
-
-vi.mock('./html-fetcher', () => ({
-  fetchPreviewHtml: vi.fn(),
-}));
-
 import { fetchPreviewHtml } from './html-fetcher';
+import { resetLastPrFilesTabRawUrl } from './auto-update-cache';
 
 beforeEach(() => {
   vi.mocked(chrome.runtime.sendMessage).mockReset();
   vi.mocked(fetchPreviewHtml).mockReset();
+  vi.mocked(resetLastPrFilesTabRawUrl).mockClear();
   clearPreviewTab();
+  vi.mocked(resetLastPrFilesTabRawUrl).mockClear();
 });
 
 it('sends open-preview-tab without existingTabId on first call', async () => {
@@ -105,4 +112,30 @@ it('clearPreviewTab resets the tabId', async () => {
 
   clearPreviewTab();
   expect(hasActivePreviewTab()).toBe(false);
+});
+
+it('clearPreviewTab resets the PR Files tab rawUrl tracker', () => {
+  clearPreviewTab();
+  expect(resetLastPrFilesTabRawUrl).toHaveBeenCalled();
+});
+
+it('openOrReusePreviewTab invokes onReady once after the tabId is cached', async () => {
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>x</p>');
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ tabId: 99, error: null });
+  const onReady = vi.fn();
+
+  await openOrReusePreviewTab('https://example.com/x.html', true, onReady);
+
+  expect(onReady).toHaveBeenCalledTimes(1);
+  expect(hasActivePreviewTab()).toBe(true);
+});
+
+it('openOrReusePreviewTab does not invoke onReady when no tabId is returned', async () => {
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>x</p>');
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ tabId: null, error: 'denied' });
+  const onReady = vi.fn();
+
+  await openOrReusePreviewTab('https://example.com/x.html', true, onReady);
+
+  expect(onReady).not.toHaveBeenCalled();
 });

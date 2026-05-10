@@ -91,7 +91,35 @@ export function createInlinePreview(
 }
 
 /**
- * Re-render an existing inline preview's iframe with new HTML.
+ * Push HTML through a preview-frame bridge, swallowing any synchronous
+ * exception thrown by the bridge so callers can decide whether to fall
+ * back to a full re-create. Extracted from `updateInlinePreviewContent`
+ * so tests can drive it with a mock bridge directly.
+ * @param bridge - Bridge instance, or `undefined` when none is registered
+ * @param html - HTML body to render
+ * @param enableJavaScript - Whether the inner iframe should retain
+ *                           `allow-scripts` permission
+ * @returns `true` when the bridge accepted the render, `false` when no
+ *          bridge was supplied or the bridge threw
+ */
+export function dispatchPreviewToBridge(
+  bridge: PreviewFrameBridge | undefined,
+  html: string,
+  enableJavaScript: boolean
+): boolean {
+  if (!bridge) return false;
+  try {
+    bridge.render(html, enableJavaScript);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Re-render an existing inline preview's iframe with new HTML. Looks up
+ * the bridge attached to the iframe and delegates to
+ * `dispatchPreviewToBridge`.
  * @param container - The DOM element containing the preview
  * @param html - New HTML content to render
  * @param enableJavaScript - Whether to allow script execution (default true)
@@ -105,9 +133,7 @@ export function updateInlinePreviewContent(container: Element, html: string, ena
   const iframe = wrapper.querySelector('iframe') as HTMLIFrameElement | null;
   if (!iframe) return false;
   const bridge = iframeBridges.get(iframe);
-  if (!bridge) return false;
-  bridge.render(html, enableJavaScript);
-  return true;
+  return dispatchPreviewToBridge(bridge, html, enableJavaScript);
 }
 
 /**

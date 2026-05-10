@@ -1,4 +1,5 @@
 import { fetchPreviewHtml } from './html-fetcher';
+import { resetLastPrFilesTabRawUrl } from './auto-update-cache';
 import type {
   OpenPreviewTabMessage,
   OpenPreviewTabResponse,
@@ -10,10 +11,12 @@ let currentPreviewTabId: number | null = null;
 
 /**
  * Reset the cached preview tab id. Used when the tab is known to be closed
- * and from tests for state reset.
+ * and from tests for state reset. Also clears the PR Files-changed
+ * rawUrl tracker so a future open re-syncs from scratch.
  */
 export function clearPreviewTab(): void {
   currentPreviewTabId = null;
+  resetLastPrFilesTabRawUrl();
 }
 
 /**
@@ -28,13 +31,18 @@ export function hasActivePreviewTab(): boolean {
  * Fetch preview HTML and either open a new preview tab or focus the existing one.
  * The background script decides between `chrome.tabs.create` and
  * `chrome.tabs.update` based on `existingTabId`. The resolved tabId is cached
- * for subsequent calls.
+ * for subsequent calls. The optional `onReady` callback fires after the
+ * tabId is recorded so callers can drive an initial-sync `handlePageUpdate`
+ * without needing to import this module's internals.
  * @param rawUrl - Raw GitHub URL of the HTML file to preview
  * @param enableJavaScript - Whether to enable JS execution in the preview
+ * @param onReady - Optional callback invoked after the resolved tabId is
+ *                  cached
  */
 export async function openOrReusePreviewTab(
   rawUrl: string,
-  enableJavaScript: boolean
+  enableJavaScript: boolean,
+  onReady?: () => void
 ): Promise<void> {
   const html = await fetchPreviewHtml(rawUrl, enableJavaScript);
   const message: OpenPreviewTabMessage = {
@@ -46,6 +54,7 @@ export async function openOrReusePreviewTab(
   const response: OpenPreviewTabResponse = await chrome.runtime.sendMessage(message);
   if (response.tabId != null) {
     currentPreviewTabId = response.tabId;
+    onReady?.();
   }
 }
 
