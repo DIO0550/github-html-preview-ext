@@ -1,4 +1,5 @@
 import { createViewportToggle } from './viewport-toggle';
+import { createZoomControl } from './zoom-control';
 import { setupPreviewFrameBridge, type PreviewFrameBridge } from './preview-frame-bridge';
 
 const INLINE_WRAPPER_CLASS = 'html-preview-inline';
@@ -38,14 +39,15 @@ function findCodeContainer(container: Element): HTMLElement | null {
  * isolated from both the GitHub page and the extension's privileged origin.
  * @param container - The DOM element containing the code
  * @param html - HTML content to render (should already have `<base>` injected)
- * @param _defaultZoom - Reserved for future zoom support via postMessage bridge
+ * @param defaultZoom - Initial zoom percentage applied via the postMessage
+ *                      zoom bridge
  * @param enableJavaScript - Whether to allow script execution in the iframe (default true)
  * @returns The created iframe element
  */
 export function createInlinePreview(
   container: Element,
   html: string,
-  _defaultZoom: number = 100,
+  defaultZoom: number = 100,
   enableJavaScript: boolean = true
 ): HTMLIFrameElement {
   const wrapper = document.createElement('div');
@@ -73,6 +75,9 @@ export function createInlinePreview(
 
   const toolbar = document.createElement('div');
   toolbar.style.cssText = 'display: flex; gap: 8px; align-items: center; padding: 4px 0;';
+  toolbar.appendChild(createZoomControl(iframe, defaultZoom, (zoomPercent) => {
+    bridge.setZoom(zoomPercent);
+  }));
   toolbar.appendChild(createViewportToggle(iframe));
 
   wrapper.appendChild(toolbar);

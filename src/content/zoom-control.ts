@@ -68,9 +68,18 @@ export function applyZoom(iframe: HTMLIFrameElement, zoomPercent: number): void 
  * Create a zoom control toolbar with +/- buttons and a numeric input.
  * @param iframe - The iframe element to control
  * @param defaultZoom - Initial zoom percentage (default 100)
+ * @param onZoom - Optional override called whenever the user changes the
+ *                 zoom level. When supplied, the legacy
+ *                 `iframe.contentDocument.body.style.zoom` path is bypassed
+ *                 — useful for cross-origin sandboxed iframes that need a
+ *                 postMessage-based zoom path instead.
  * @returns A container element with zoom controls
  */
-export function createZoomControl(iframe: HTMLIFrameElement, defaultZoom: number = 100): HTMLElement {
+export function createZoomControl(
+  iframe: HTMLIFrameElement,
+  defaultZoom: number = 100,
+  onZoom?: (zoomPercent: number) => void
+): HTMLElement {
   let currentZoom = clampZoom(defaultZoom);
 
   const container = document.createElement('div');
@@ -80,6 +89,7 @@ export function createZoomControl(iframe: HTMLIFrameElement, defaultZoom: number
   const minusBtn = document.createElement('button');
   minusBtn.className = 'btn btn-sm';
   minusBtn.textContent = '−';
+  minusBtn.type = 'button';
 
   const input = document.createElement('input');
   input.type = 'number';
@@ -92,15 +102,25 @@ export function createZoomControl(iframe: HTMLIFrameElement, defaultZoom: number
   const plusBtn = document.createElement('button');
   plusBtn.className = 'btn btn-sm';
   plusBtn.textContent = '+';
+  plusBtn.type = 'button';
 
   const percentLabel = document.createElement('span');
   percentLabel.textContent = '%';
 
-  const updateZoom = (value: number) => {
+  /**
+   * Clamp the requested zoom, sync the input, and route through `onZoom`
+   * when supplied or fall back to the legacy direct-DOM path.
+   * @param value - Raw zoom percentage requested by the user
+   */
+  function updateZoom(value: number): void {
     currentZoom = clampZoom(value);
     input.value = String(currentZoom);
+    if (onZoom) {
+      onZoom(currentZoom);
+      return;
+    }
     applyZoom(iframe, currentZoom);
-  };
+  }
 
   minusBtn.addEventListener('click', () => updateZoom(currentZoom - ZOOM_STEP));
   plusBtn.addEventListener('click', () => updateZoom(currentZoom + ZOOM_STEP));
@@ -111,7 +131,13 @@ export function createZoomControl(iframe: HTMLIFrameElement, defaultZoom: number
   container.appendChild(percentLabel);
   container.appendChild(plusBtn);
 
-  applyZoom(iframe, currentZoom);
+  // Apply the initial zoom through the same path as user interactions so
+  // the bridge-based callback is exercised on first render.
+  if (onZoom) {
+    onZoom(currentZoom);
+  } else {
+    applyZoom(iframe, currentZoom);
+  }
 
   return container;
 }

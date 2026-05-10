@@ -9,12 +9,19 @@ type RenderMessage = {
   enableJavaScript: boolean;
 };
 
+type ZoomMessage = {
+  type: 'preview-frame-zoom';
+  zoomPercent: number;
+};
+
 type RenderFn = (html: string, enableJavaScript: boolean) => void;
+type ZoomFn = (zoomPercent: number) => void;
 type DestroyFn = () => void;
 type ResizeCallback = (scrollHeight: number) => void;
 
 export type PreviewFrameBridge = {
   render: RenderFn;
+  setZoom: ZoomFn;
   destroy: DestroyFn;
 };
 
@@ -23,27 +30,46 @@ export type PreviewFrameBridge = {
  * `preview-frame-ready` handshake (queueing render until ready) and forwards
  * `preview-frame-resize` notifications from the inner sandbox iframe to the
  * supplied callback so the embedder can auto-fit the iframe height.
+ *
+ * Zoom requests are sent via `preview-frame-zoom` and are remembered so a
+ * subsequent render can re-apply them after the inner srcdoc reloads —
+ * preview-frame.ts handles the persistence on the receiving side.
  * @param iframe - iframe whose `src` points at preview-frame.html
  * @param onResize - Optional callback invoked with the inner content's scrollHeight
- * @returns Object with `render(html, enableJavaScript)` and `destroy()`
+ * @returns Object with `render(html, enableJavaScript)`, `setZoom(percent)` and `destroy()`
  */
 export function setupPreviewFrameBridge(
   iframe: HTMLIFrameElement,
   onResize?: ResizeCallback
 ): PreviewFrameBridge {
-  let pending: RenderRequest | null = null;
+  let pendingRender: RenderRequest | null = null;
+  let pendingZoom: number | null = null;
   let ready = false;
 
   /** Send any queued render message to the iframe and clear the queue. */
-  const flush = (): void => {
-    if (!pending) return;
+  const flushRender = (): void => {
+    if (!pendingRender) return;
     const message: RenderMessage = {
       type: 'preview-frame-render',
-      html: pending.html,
-      enableJavaScript: pending.enableJavaScript,
+      html: pendingRender.html,
+      enableJavaScript: pendingRender.enableJavaScript,
     };
     iframe.contentWindow?.postMessage(message, '*');
-    pending = null;
+    pendingRender = null;
+  };
+
+  /**
+   * Send the current zoom level (if any) to preview-frame.html. Unlike
+   * `flushRender`, this leaves `pendingZoom` set so future renders that
+   * cause an inner-iframe reload can re-apply the same zoom.
+   */
+  const sendZoom = (): void => {
+    if (pendingZoom === null) return;
+    const message: ZoomMessage = {
+      type: 'preview-frame-zoom',
+      zoomPercent: pendingZoom,
+    };
+    iframe.contentWindow?.postMessage(message, '*');
   };
 
   /**
@@ -56,7 +82,8 @@ export function setupPreviewFrameBridge(
     if (!data) return;
     if (data.type === 'preview-frame-ready') {
       ready = true;
-      flush();
+      flushRender();
+      sendZoom();
       return;
     }
     if (data.type === 'preview-frame-resize' && typeof data.scrollHeight === 'number' && onResize) {
@@ -67,12 +94,17 @@ export function setupPreviewFrameBridge(
 
   return {
     render(html: string, enableJavaScript: boolean): void {
-      pending = { html, enableJavaScript };
-      if (ready) flush();
+      pendingRender = { html, enableJavaScript };
+      if (ready) flushRender();
+    },
+    setZoom(zoomPercent: number): void {
+      pendingZoom = zoomPercent;
+      if (ready) sendZoom();
     },
     destroy(): void {
       window.removeEventListener('message', handler);
-      pending = null;
+      pendingRender = null;
+      pendingZoom = null;
     },
   };
 }
