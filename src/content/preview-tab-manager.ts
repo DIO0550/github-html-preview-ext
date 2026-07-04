@@ -10,6 +10,13 @@ import type {
 let currentPreviewTabId: number | null = null;
 
 /**
+ * Monotonic token for `updatePreviewTab` calls. Overlapping updates (rapid
+ * file switches) fetch concurrently; a slow fetch for an older file must not
+ * overwrite the tab after a newer update already rendered.
+ */
+let updatePreviewSeq = 0;
+
+/**
  * Reset the cached preview tab id. Used when the tab is known to be closed
  * and from tests for state reset. Also clears the PR Files-changed
  * rawUrl tracker so a future open re-syncs from scratch.
@@ -77,7 +84,10 @@ export async function updatePreviewTab(
   const tabId = currentPreviewTabId;
   if (tabId === null) return;
 
+  const seq = ++updatePreviewSeq;
   const html = await fetchPreviewHtml(rawUrl, enableJavaScript);
+  if (seq !== updatePreviewSeq) return; // superseded by a newer update
+
   const message: UpdatePreviewMessage = {
     type: 'update-preview',
     tabId,

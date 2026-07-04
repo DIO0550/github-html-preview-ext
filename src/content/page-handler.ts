@@ -184,17 +184,20 @@ function renderOrRecreate(
 export function handlePageUpdate(pathname: string, settings: ExtensionSettings): void {
   const pageType = getPageType(pathname);
   debugLog('handlePageUpdate', { pathname, hash: location.hash, pageType });
-  if (pageType === 'unknown') return;
-
-  const ownerRepo = extractOwnerRepo(pathname);
-  if (!ownerRepo || !matchesWhitelist(ownerRepo, settings.allowedRepos)) return;
 
   // When leaving a PR Files-changed page, drop the panel/tab caches so the
   // next visit re-syncs even if the active rawUrl coincidentally matches.
+  // This must run before the 'unknown' early-return: navigating to e.g. the
+  // PR Conversation tab is 'unknown' but still counts as leaving the page.
   if (pageType !== 'pr-files') {
     setLastPrFilesTabRawUrl(null);
     setLastPanelRawUrl(null);
   }
+
+  if (pageType === 'unknown') return;
+
+  const ownerRepo = extractOwnerRepo(pathname);
+  if (!ownerRepo || !matchesWhitelist(ownerRepo, settings.allowedRepos)) return;
 
   addPreviewButtons(pageType);
 
@@ -230,6 +233,14 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
 }
 
 /**
+ * Monotonic token for panel sync fetches. Rapid file switches start
+ * overlapping fetches; without ordering, a slow fetch for the previous
+ * file can resolve last and overwrite the panel with stale content while
+ * the cache claims the new file is shown. Only the latest fetch may render.
+ */
+let panelSyncSeq = 0;
+
+/**
  * Push the active PR file's rawUrl into any open external preview tab
  * and side panel. Each target keeps its own last-seen rawUrl so we only
  * touch them when the file actually changed.
@@ -253,14 +264,17 @@ function syncExternalPrFilePreviews(enableJavaScript: boolean): void {
   if (panelOpen && rawUrl !== getLastPanelRawUrl()) {
     setLastPanelRawUrl(rawUrl);
     const fileName = getFilePath(active) ?? 'preview.html';
+    const seq = ++panelSyncSeq;
     void fetchPreviewHtml(rawUrl, enableJavaScript)
       .then((html) => {
+        if (seq !== panelSyncSeq) return; // superseded by a newer file switch
         if (!isSidePanelOpen()) return;
         updateSidePanelContent(html, fileName);
       })
       .catch(() => {
-        // Allow next page update to retry; clear cache so it does.
-        setLastPanelRawUrl(null);
+        // Allow next page update to retry; clear cache so it does — unless
+        // a newer sync already took over the panel.
+        if (seq === panelSyncSeq) setLastPanelRawUrl(null);
       });
   }
 }

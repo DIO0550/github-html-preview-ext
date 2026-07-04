@@ -56,6 +56,34 @@ it('posts immediately on subsequent renders after ready', () => {
   );
 });
 
+it('re-posts the last render when the iframe reloads and signals ready again', () => {
+  const bridge = setupPreviewFrameBridge(iframe);
+  bridge.render('<p>persist</p>', true);
+
+  const ready = (): void => {
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'preview-frame-ready' },
+      source: mockContentWindow as unknown as MessageEventSource,
+    }));
+  };
+
+  ready();
+  postMessageSpy.mockClear();
+
+  // Simulate the iframe being detached/re-attached by GitHub's SPA re-render:
+  // the reloaded frame posts a fresh ready signal.
+  ready();
+
+  expect(postMessageSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'preview-frame-render',
+      html: '<p>persist</p>',
+      enableJavaScript: true,
+    }),
+    '*'
+  );
+});
+
 it('ignores ready signals from other windows', () => {
   const bridge = setupPreviewFrameBridge(iframe);
   bridge.render('<p>x</p>', true);

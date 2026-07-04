@@ -369,6 +369,67 @@ it('does not update the side panel when it is closed', async () => {
   expect(updateSidePanelContent).not.toHaveBeenCalled();
 });
 
+it('re-syncs the preview tab after visiting a non-files page (caches cleared on leave)', () => {
+  const wrap = document.createElement('div');
+  wrap.id = 'diff-active1';
+  const header = document.createElement('div');
+  wrap.appendChild(header);
+  document.body.appendChild(wrap);
+  stubTop(header, 50);
+
+  vi.mocked(findHtmlFileHeaders).mockReturnValue([header]);
+  vi.mocked(getRawUrl).mockReturnValue('https://example.com/active.html');
+  vi.mocked(hasActivePreviewTab).mockReturnValue(true);
+
+  handlePageUpdate('/owner/repo/pull/1/files', settings);
+  vi.mocked(updatePreviewTab).mockClear();
+
+  // Leave to the PR Conversation tab ('unknown' page type), then come back.
+  handlePageUpdate('/owner/repo/pull/1', settings);
+  handlePageUpdate('/owner/repo/pull/1/files', settings);
+
+  expect(updatePreviewTab).toHaveBeenCalledWith('https://example.com/active.html', true);
+});
+
+it('drops a stale panel fetch that resolves after a newer file switch', async () => {
+  const wrap = document.createElement('div');
+  wrap.id = 'diff-active1';
+  const header = document.createElement('div');
+  wrap.appendChild(header);
+  document.body.appendChild(wrap);
+  stubTop(header, 50);
+
+  vi.mocked(findHtmlFileHeaders).mockReturnValue([header]);
+  vi.mocked(getFilePath).mockReturnValue('file.html');
+  vi.mocked(isSidePanelOpen).mockReturnValue(true);
+  const noAutoSettings = { ...settings, autoPreview: false };
+
+  // File A: fetch stays pending until after file B has rendered.
+  vi.mocked(getRawUrl).mockReturnValue('https://example.com/a.html');
+  let resolveA: (v: string) => void = () => {};
+  vi.mocked(fetchPreviewHtml).mockImplementationOnce(
+    () => new Promise<string>((resolve) => { resolveA = resolve; })
+  );
+  handlePageUpdate('/owner/repo/pull/1/files', noAutoSettings);
+
+  // Switch to file B: its fetch resolves immediately.
+  vi.mocked(getRawUrl).mockReturnValue('https://example.com/b.html');
+  vi.mocked(fetchPreviewHtml).mockResolvedValueOnce('<p>B</p>');
+  handlePageUpdate('/owner/repo/pull/1/files', noAutoSettings);
+
+  await vi.waitFor(() => {
+    expect(updateSidePanelContent).toHaveBeenCalledWith('<p>B</p>', 'file.html');
+  });
+  vi.mocked(updateSidePanelContent).mockClear();
+
+  // File A's slow fetch finally resolves — it must NOT overwrite B.
+  resolveA('<p>A</p>');
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(updateSidePanelContent).not.toHaveBeenCalled();
+});
+
 // autoPreviewContainer fallback path
 
 it('falls back to remove + create when updateInlinePreviewContent returns false', async () => {

@@ -31,6 +31,12 @@ export type PreviewFrameBridge = {
  * `preview-frame-resize` notifications from the inner sandbox iframe to the
  * supplied callback so the embedder can auto-fit the iframe height.
  *
+ * The last render request is remembered (not just queued once): when the
+ * iframe reloads — GitHub's SPA re-renders can detach and re-attach the
+ * preview iframe, which blanks it — a fresh `preview-frame-ready` arrives
+ * and the bridge re-sends the last html so the preview recovers instead of
+ * staying empty.
+ *
  * Zoom requests are sent via `preview-frame-zoom` and are remembered so a
  * subsequent render can re-apply them after the inner srcdoc reloads —
  * preview-frame.ts handles the persistence on the receiving side.
@@ -42,20 +48,22 @@ export function setupPreviewFrameBridge(
   iframe: HTMLIFrameElement,
   onResize?: ResizeCallback
 ): PreviewFrameBridge {
-  let pendingRender: RenderRequest | null = null;
+  let lastRender: RenderRequest | null = null;
   let pendingZoom: number | null = null;
   let ready = false;
 
-  /** Send any queued render message to the iframe and clear the queue. */
-  const flushRender = (): void => {
-    if (!pendingRender) return;
+  /**
+   * Send the last render request (if any) to the iframe. Unlike a one-shot
+   * queue, `lastRender` stays set so a later iframe reload can replay it.
+   */
+  const sendRender = (): void => {
+    if (!lastRender) return;
     const message: RenderMessage = {
       type: 'preview-frame-render',
-      html: pendingRender.html,
-      enableJavaScript: pendingRender.enableJavaScript,
+      html: lastRender.html,
+      enableJavaScript: lastRender.enableJavaScript,
     };
     iframe.contentWindow?.postMessage(message, '*');
-    pendingRender = null;
   };
 
   /**
@@ -82,7 +90,7 @@ export function setupPreviewFrameBridge(
     if (!data) return;
     if (data.type === 'preview-frame-ready') {
       ready = true;
-      flushRender();
+      sendRender();
       sendZoom();
       return;
     }
@@ -94,8 +102,8 @@ export function setupPreviewFrameBridge(
 
   return {
     render(html: string, enableJavaScript: boolean): void {
-      pendingRender = { html, enableJavaScript };
-      if (ready) flushRender();
+      lastRender = { html, enableJavaScript };
+      if (ready) sendRender();
     },
     setZoom(zoomPercent: number): void {
       pendingZoom = zoomPercent;
@@ -103,7 +111,7 @@ export function setupPreviewFrameBridge(
     },
     destroy(): void {
       window.removeEventListener('message', handler);
-      pendingRender = null;
+      lastRender = null;
       pendingZoom = null;
     },
   };

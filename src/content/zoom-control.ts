@@ -124,7 +124,14 @@ export function createZoomControl(
 
   minusBtn.addEventListener('click', () => updateZoom(currentZoom - ZOOM_STEP));
   plusBtn.addEventListener('click', () => updateZoom(currentZoom + ZOOM_STEP));
-  input.addEventListener('change', () => updateZoom(Number(input.value)));
+  input.addEventListener('change', () => {
+    const raw = input.value.trim();
+    const parsed = Number(raw);
+    // A cleared input parses to 0 (Number('') === 0) and would slam the zoom
+    // to the 25% minimum; invalid text parses to NaN. Keep the current zoom
+    // in both cases instead.
+    updateZoom(raw === '' || !Number.isFinite(parsed) ? currentZoom : parsed);
+  });
 
   container.appendChild(minusBtn);
   container.appendChild(input);

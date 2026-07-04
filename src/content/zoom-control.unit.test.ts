@@ -298,3 +298,17 @@ it('clamps direct input to valid range', () => {
   expect(input.value).toBe('200');
   expect(doc.body.style.zoom).toBe('2');
 });
+
+it('keeps the current zoom when the input is cleared (NaN guard)', () => {
+  const iframe = document.createElement('iframe');
+  const doc = createFakeDoc();
+  attachFakeDoc(iframe, doc);
+  const control = createZoomControl(iframe, 120);
+  const input = control.querySelector('input') as HTMLInputElement;
+
+  input.value = '';
+  input.dispatchEvent(new Event('change'));
+
+  expect(input.value).toBe('120');
+  expect(doc.body.style.zoom).toBe('1.2');
+});

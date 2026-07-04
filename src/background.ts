@@ -126,7 +126,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.type === 'preview-get') {
     const data = previewStore.get(message.id);
     if (data) {
-      previewStore.delete(message.id);
+      // Keep the entry until its TTL expires so a reload of the preview tab
+      // (same id in the URL) can re-fetch instead of timing out on a blank page.
       sendResponse(data);
     } else {
       sendResponse({ html: null, error: null, pending: true });
