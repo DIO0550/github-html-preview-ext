@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GitHub PR HTML Preview",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Preview HTML files directly from GitHub PR's Files changed tab",
   "permissions": [
     "storage",
@@ -19,6 +19,7 @@
     {
       "matches": [
         "https://github.com/*/pull/*",
+        "https://github.com/*/commit/*",
         "https://github.com/*/blob/*/*.html",
         "https://github.com/*/blob/*/*.htm"
       ],

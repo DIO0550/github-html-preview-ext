@@ -149,6 +149,28 @@ it('returns exists=false when chrome.tabs.get rejects', async () => {
   expect(sendResponse).toHaveBeenCalledWith({ exists: false });
 });
 
+// preview-store / preview-get
+
+it('keeps the stored preview available for repeated preview-get calls (tab reload)', () => {
+  const storeResponse = vi.fn();
+  listener(
+    { type: 'preview-store', id: 'abc', html: '<p>stored</p>', error: null },
+    sender,
+    storeResponse
+  );
+  expect(storeResponse).toHaveBeenCalledWith({ ok: true });
+
+  const firstGet = vi.fn();
+  listener({ type: 'preview-get', id: 'abc' }, sender, firstGet);
+  expect(firstGet).toHaveBeenCalledWith(expect.objectContaining({ html: '<p>stored</p>' }));
+
+  // A reload of the preview tab issues a second preview-get with the same
+  // id — it must still resolve instead of pending until timeout.
+  const secondGet = vi.fn();
+  listener({ type: 'preview-get', id: 'abc' }, sender, secondGet);
+  expect(secondGet).toHaveBeenCalledWith(expect.objectContaining({ html: '<p>stored</p>' }));
+});
+
 // Defensive integer guards (regression for "tabs.sendMessage: No matching signature")
 
 it('rejects update-preview when tabId is null without invoking chrome.tabs.sendMessage', async () => {

@@ -18,6 +18,24 @@ const CODE_CONTAINER_SELECTORS = [
 
 const iframeBridges = new WeakMap<HTMLIFrameElement, PreviewFrameBridge>();
 
+const MIN_AUTO_FIT_HEIGHT_PX = 100;
+
+/**
+ * Clamp a reported content scrollHeight to a sane auto-fit range. The inner
+ * preview iframe fills 100% of this iframe, so content sized with vh/% units
+ * grows whenever the iframe grows — feeding the raw scrollHeight back as the
+ * iframe height creates an unbounded growth loop that makes the GitHub page
+ * scroll far past its content. Capping at the window height breaks the loop;
+ * taller documents scroll inside the preview instead.
+ * @param scrollHeight - Height reported by the preview-frame bridge
+ * @returns Clamped pixel height, or null when the value is unusable
+ */
+export function clampAutoFitHeight(scrollHeight: number): number | null {
+  if (!Number.isFinite(scrollHeight) || scrollHeight <= 0) return null;
+  const max = Math.max(MIN_AUTO_FIT_HEIGHT_PX, window.innerHeight);
+  return Math.round(Math.min(Math.max(scrollHeight, MIN_AUTO_FIT_HEIGHT_PX), max));
+}
+
 /**
  * Find the code display container within a parent element.
  * @param container - Parent element to search within
@@ -68,7 +86,8 @@ export function createInlinePreview(
   `;
 
   const bridge = setupPreviewFrameBridge(iframe, (scrollHeight) => {
-    iframe.style.height = `${scrollHeight}px`;
+    const height = clampAutoFitHeight(scrollHeight);
+    if (height !== null) iframe.style.height = `${height}px`;
   });
   iframeBridges.set(iframe, bridge);
   bridge.render(html, enableJavaScript);

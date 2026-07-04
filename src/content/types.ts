@@ -8,7 +8,7 @@ export type ButtonState = 'idle' | 'loading' | 'error';
 
 export type PreviewMode = 'new-tab' | 'inline' | 'panel';
 
-export type PageType = 'pr-files' | 'blob-html' | 'unknown';
+export type PageType = 'pr-files' | 'commit' | 'blob-html' | 'unknown';
 
 export type OpenPreviewTabMessage = {
   type: 'open-preview-tab';

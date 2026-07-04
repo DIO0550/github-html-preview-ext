@@ -140,6 +140,36 @@ it('openOrReusePreviewTab does not invoke onReady when no tabId is returned', as
   expect(onReady).not.toHaveBeenCalled();
 });
 
+it('drops a stale updatePreviewTab whose fetch resolves after a newer update', async () => {
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>orig</p>');
+  vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ tabId: 55, error: null });
+  await openOrReusePreviewTab('https://example.com/file.html', true);
+
+  // First update (old file) — its fetch resolves LAST.
+  let resolveOld: (v: string) => void = () => {};
+  vi.mocked(fetchPreviewHtml).mockImplementationOnce(
+    () => new Promise<string>((resolve) => { resolveOld = resolve; })
+  );
+  // Second update (new file) — resolves immediately.
+  const sendCalls: unknown[] = [];
+  vi.mocked(chrome.runtime.sendMessage).mockImplementation(async (msg: unknown) => {
+    sendCalls.push(msg);
+    return { ok: true, error: null };
+  });
+
+  const oldUpdate = updatePreviewTab('https://example.com/old.html', true);
+  vi.mocked(fetchPreviewHtml).mockResolvedValueOnce('<p>new</p>');
+  await updatePreviewTab('https://example.com/new.html', true);
+
+  resolveOld('<p>old</p>');
+  await oldUpdate;
+
+  // Only the newer update may reach the tab; the stale one is dropped.
+  expect(sendCalls).toEqual([
+    expect.objectContaining({ type: 'update-preview', html: '<p>new</p>' }),
+  ]);
+});
+
 it('updatePreviewTab sends the captured tabId even if currentPreviewTabId is cleared mid-flight', async () => {
   vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>orig</p>');
   vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ tabId: 42, error: null });

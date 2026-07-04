@@ -5,6 +5,7 @@ import {
   removeInlinePreview,
   updateInlinePreviewContent,
   dispatchPreviewToBridge,
+  clampAutoFitHeight,
 } from './inline-preview';
 
 let postMessageSpy: ReturnType<typeof vi.fn>;
@@ -142,7 +143,7 @@ it('restores code container display on remove', () => {
   expect(codeContainer.classList.contains('html-preview-hidden-code')).toBe(false);
 });
 
-it('updates iframe height when preview-frame reports a resize', () => {
+it('updates iframe height (clamped to the window height) when preview-frame reports a resize', () => {
   const container = document.createElement('div');
   document.body.appendChild(container);
 
@@ -155,7 +156,30 @@ it('updates iframe height when preview-frame reports a resize', () => {
     source: iframe.contentWindow as unknown as MessageEventSource,
   }));
 
-  expect(iframe.style.height).toBe('1500px');
+  expect(iframe.style.height).toBe(`${clampAutoFitHeight(1500)}px`);
+});
+
+// clampAutoFitHeight — guards the auto-fit feedback loop (vh/% content grows
+// with the iframe, so raw scrollHeight fed back as height grows unbounded).
+
+it('passes through heights between the minimum and the window height', () => {
+  const h = Math.min(500, window.innerHeight);
+  expect(clampAutoFitHeight(h)).toBe(h);
+});
+
+it('caps runaway heights at the window height', () => {
+  expect(clampAutoFitHeight(window.innerHeight + 10_000)).toBe(window.innerHeight);
+});
+
+it('raises tiny heights to the minimum', () => {
+  expect(clampAutoFitHeight(1)).toBe(100);
+});
+
+it('rejects non-finite and non-positive heights', () => {
+  expect(clampAutoFitHeight(Number.NaN)).toBeNull();
+  expect(clampAutoFitHeight(Number.POSITIVE_INFINITY)).toBeNull();
+  expect(clampAutoFitHeight(0)).toBeNull();
+  expect(clampAutoFitHeight(-50)).toBeNull();
 });
 
 it('returns false from updateInlinePreviewContent when no wrapper exists', () => {

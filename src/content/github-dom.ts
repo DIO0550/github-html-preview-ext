@@ -1,5 +1,5 @@
 import type { PageType } from './types';
-import { isHtmlFile, convertBlobToRawUrl } from './url-utils';
+import { isHtmlFile, convertBlobToRawUrl, isDiffPage } from './url-utils';
 import { addPreviewButtonToHeader } from './preview-button';
 
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
@@ -56,7 +56,8 @@ export function getFilePath(header: Element): string | null {
 /**
  * Get the raw URL from a file header.
  * Tries the legacy "View file" blob link first, then falls back to
- * constructing a raw URL from the PR's head ref and file path.
+ * constructing a raw URL from the commit SHA in the URL (commit views) or
+ * the PR's head ref and file path.
  * @param header - File header DOM element
  * @returns Raw URL string, or null if not determinable
  */
@@ -72,10 +73,29 @@ export function getRawUrl(header: Element): string | null {
     if (viewFileLink) return convertBlobToRawUrl(viewFileLink.href);
   }
 
-  // Fallback: construct raw URL from PR head branch + file path
   const filePath = getFilePath(header);
   if (!filePath) return null;
-  return buildRawUrlFromPr(filePath);
+  // Commit views pin the file to the commit SHA in the URL — check this
+  // before the PR head branch so a PR Commits-tab page previews the file
+  // as of that commit, not the branch tip.
+  return buildRawUrlFromCommitPage(filePath) ?? buildRawUrlFromPr(filePath);
+}
+
+/**
+ * Build a raw URL for a file shown on a commit diff view using the commit
+ * SHA embedded in the URL. Covers both the repository commit page
+ * (`/owner/repo/commit/<sha>`) and the PR Commits tab
+ * (`/owner/repo/pull/<n>/commits/<sha>`).
+ * @param filePath - Relative file path within the repository
+ * @returns Absolute raw URL, or null when the URL is not a commit view
+ */
+function buildRawUrlFromCommitPage(filePath: string): string | null {
+  const match = location.pathname.match(
+    /^\/([^/]+\/[^/]+)\/(?:commit|pull\/\d+\/commits)\/([0-9a-f]{7,40})\b/i
+  );
+  if (!match) return null;
+  const [, ownerRepo, sha] = match;
+  return `${location.origin}/${ownerRepo}/raw/${sha}/${filePath}`;
 }
 
 /**
@@ -127,11 +147,12 @@ export function getBlobPageRawUrl(): string | null {
 }
 
 /**
- * Add preview buttons to the page based on page type.
- * @param pageType - The detected page type ('pr-files' or 'blob-html')
+ * Add preview buttons to the page based on page type. Diff pages (PR
+ * Files-changed and commit views) share the same per-file-header buttons.
+ * @param pageType - The detected page type
  */
 export function addPreviewButtons(pageType: PageType): void {
-  if (pageType === 'pr-files') {
+  if (isDiffPage(pageType)) {
     addPreviewButtonsToPrFiles();
   } else if (pageType === 'blob-html') {
     addPreviewButtonToBlobPage();

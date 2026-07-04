@@ -92,6 +92,26 @@ it('returns null when no "View file" link exists (deleted file)', () => {
   expect(getRawUrl(el)).toBeNull();
 });
 
+it('falls back to the commit SHA in the URL on a commit page', () => {
+  history.replaceState({}, '', '/owner/repo/commit/abc1234def');
+  const el = document.createElement('div');
+  el.setAttribute('data-tagsearch-path', 'dir/page.html');
+
+  expect(getRawUrl(el)).toBe(`${location.origin}/owner/repo/raw/abc1234def/dir/page.html`);
+
+  history.replaceState({}, '', '/');
+});
+
+it('falls back to the commit SHA in the URL on a PR Commits-tab page', () => {
+  history.replaceState({}, '', '/owner/repo/pull/12/commits/abc1234def');
+  const el = document.createElement('div');
+  el.setAttribute('data-tagsearch-path', 'dir/page.html');
+
+  expect(getRawUrl(el)).toBe(`${location.origin}/owner/repo/raw/abc1234def/dir/page.html`);
+
+  history.replaceState({}, '', '/');
+});
+
 // isAlreadyProcessed
 
 it('returns false when no preview button exists', () => {

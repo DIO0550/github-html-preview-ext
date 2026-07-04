@@ -1,5 +1,5 @@
 import { it, expect, test } from 'vitest';
-import { convertBlobToRawUrl, isHtmlFile, injectBaseTag, getPageType, extractOwnerRepo, matchesWhitelist } from './url-utils';
+import { convertBlobToRawUrl, isHtmlFile, injectBaseTag, getPageType, extractOwnerRepo, matchesWhitelist, isDiffPage } from './url-utils';
 
 // convertBlobToRawUrl
 
@@ -72,11 +72,28 @@ it('preserves DOCTYPE', () => {
 test.each([
   ['/owner/repo/pull/123/files', 'pr-files'],
   ['/owner/repo/pull/123/changes', 'pr-files'],
+  ['/owner/repo/commit/abc1234', 'commit'],
+  ['/owner/repo/commit/0f8a3b2c1d4e5f60718293a4b5c6d7e8f9012345', 'commit'],
+  ['/owner/repo/pull/123/commits/abc1234', 'commit'],
   ['/owner/repo/blob/main/index.html', 'blob-html'],
   ['/owner/repo/tree/main', 'unknown'],
   ['/owner/repo/pull/123', 'unknown'],
+  ['/owner/repo/pull/123/commits', 'unknown'],
+  ['/owner/repo/commits/main', 'unknown'],
+  ['/owner/repo/commit/xyz', 'unknown'],
 ])('getPageType(%s) returns %s', (input, expected) => {
   expect(getPageType(input)).toBe(expected);
+});
+
+// isDiffPage
+
+test.each([
+  ['pr-files', true],
+  ['commit', true],
+  ['blob-html', false],
+  ['unknown', false],
+] as const)('isDiffPage(%s) returns %s', (pageType, expected) => {
+  expect(isDiffPage(pageType)).toBe(expected);
 });
 
 // extractOwnerRepo
