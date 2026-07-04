@@ -369,6 +369,43 @@ it('does not update the side panel when it is closed', async () => {
   expect(updateSidePanelContent).not.toHaveBeenCalled();
 });
 
+it('syncs the preview tab on a commit page', () => {
+  const wrap = document.createElement('div');
+  wrap.id = 'diff-active1';
+  const header = document.createElement('div');
+  wrap.appendChild(header);
+  document.body.appendChild(wrap);
+  stubTop(header, 50);
+
+  vi.mocked(findHtmlFileHeaders).mockReturnValue([header]);
+  vi.mocked(getRawUrl).mockReturnValue('https://example.com/commit-file.html');
+  vi.mocked(hasActivePreviewTab).mockReturnValue(true);
+
+  handlePageUpdate('/owner/repo/commit/abc1234', settings);
+
+  expect(updatePreviewTab).toHaveBeenCalledWith('https://example.com/commit-file.html', true);
+});
+
+it('auto-previews HTML files on a PR Commits-tab page', async () => {
+  const wrap = document.createElement('div');
+  wrap.id = 'diff-1';
+  const header = document.createElement('div');
+  wrap.appendChild(header);
+  document.body.appendChild(wrap);
+  stubTop(header, 50);
+
+  vi.mocked(findHtmlFileHeaders).mockReturnValue([header]);
+  vi.mocked(getRawUrl).mockReturnValue('https://example.com/x.html');
+  vi.mocked(updateInlinePreviewContent).mockReturnValue(false);
+  vi.mocked(fetchPreviewHtml).mockResolvedValue('<p>x</p>');
+
+  handlePageUpdate('/owner/repo/pull/1/commits/abc1234', settings);
+
+  await vi.waitFor(() => {
+    expect(createInlinePreview).toHaveBeenCalled();
+  });
+});
+
 it('re-syncs the preview tab after visiting a non-files page (caches cleared on leave)', () => {
   const wrap = document.createElement('div');
   wrap.id = 'diff-active1';

@@ -1,5 +1,5 @@
 import type { ExtensionSettings } from './settings';
-import { getPageType, extractOwnerRepo, matchesWhitelist } from './url-utils';
+import { getPageType, extractOwnerRepo, matchesWhitelist, isDiffPage } from './url-utils';
 import {
   addPreviewButtons,
   findHtmlFileHeaders,
@@ -185,11 +185,12 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
   const pageType = getPageType(pathname);
   debugLog('handlePageUpdate', { pathname, hash: location.hash, pageType });
 
-  // When leaving a PR Files-changed page, drop the panel/tab caches so the
-  // next visit re-syncs even if the active rawUrl coincidentally matches.
-  // This must run before the 'unknown' early-return: navigating to e.g. the
-  // PR Conversation tab is 'unknown' but still counts as leaving the page.
-  if (pageType !== 'pr-files') {
+  // When leaving a diff page (PR Files-changed or a commit view), drop the
+  // panel/tab caches so the next visit re-syncs even if the active rawUrl
+  // coincidentally matches. This must run before the 'unknown' early-return:
+  // navigating to e.g. the PR Conversation tab is 'unknown' but still counts
+  // as leaving the page.
+  if (!isDiffPage(pageType)) {
     setLastPrFilesTabRawUrl(null);
     setLastPanelRawUrl(null);
   }
@@ -201,7 +202,7 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
 
   addPreviewButtons(pageType);
 
-  if (pageType === 'pr-files' && !document.querySelector(BATCH_BUTTON_SELECTOR)) {
+  if (isDiffPage(pageType) && !document.querySelector(BATCH_BUTTON_SELECTOR)) {
     const batchBtn = createBatchPreviewButton();
     if (batchBtn) {
       const diffHeader = document.querySelector('#diff-header, .pr-toolbar, .diffbar');
@@ -219,12 +220,12 @@ export function handlePageUpdate(pathname: string, settings: ExtensionSettings):
     }
   }
 
-  if (pageType === 'pr-files') {
+  if (isDiffPage(pageType)) {
     syncExternalPrFilePreviews(settings.enableJavaScript);
   }
 
   if (settings.autoPreview) {
-    if (pageType === 'pr-files') {
+    if (isDiffPage(pageType)) {
       void autoPreviewPrFiles(settings.defaultZoom, settings.enableJavaScript);
     } else if (pageType === 'blob-html') {
       void autoPreviewBlobPage(settings.defaultZoom, settings.enableJavaScript);

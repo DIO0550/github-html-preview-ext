@@ -1,6 +1,6 @@
 {
   "name": "github-html-preview-extension",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "github-html-preview-extension",
   "type": "module",
   "scripts": {

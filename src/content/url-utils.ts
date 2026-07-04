@@ -78,11 +78,27 @@ export function matchesWhitelist(ownerRepo: string, allowedRepos: string[]): boo
 
 /**
  * Determine the GitHub page type from a URL path.
+ * Commit diff views — both the repository commit page (`/commit/<sha>`) and
+ * the PR Commits tab (`/pull/<n>/commits/<sha>`) — render the same file
+ * headers as PR Files-changed, so they get their own diff page type.
  * @param path - URL pathname (e.g. `/owner/repo/pull/123/files`)
- * @returns Page type: `'pr-files'`, `'blob-html'`, or `'unknown'`
+ * @returns Page type: `'pr-files'`, `'commit'`, `'blob-html'`, or `'unknown'`
  */
 export function getPageType(path: string): PageType {
   if (/\/pull\/\d+\/(files|changes)/.test(path)) return 'pr-files';
+  if (/\/pull\/\d+\/commits\/[0-9a-f]{7,40}\b/i.test(path)) return 'commit';
+  if (/\/commit\/[0-9a-f]{7,40}\b/i.test(path)) return 'commit';
   if (/\/blob\/.*\.html?$/i.test(path)) return 'blob-html';
   return 'unknown';
+}
+
+/**
+ * Whether a page type renders file diff headers (PR Files-changed or a
+ * commit view). Diff pages share the preview-button / auto-preview /
+ * panel-tab sync pipeline.
+ * @param pageType - Page type returned by `getPageType`
+ * @returns true for diff-style pages
+ */
+export function isDiffPage(pageType: PageType): boolean {
+  return pageType === 'pr-files' || pageType === 'commit';
 }
