@@ -187,3 +187,123 @@ it('addPreviewButtons skips already processed headers', () => {
   const buttons = document.querySelectorAll('.html-preview-btn');
   expect(buttons).toHaveLength(1);
 });
+
+// New GitHub UI (hashed CSS-module class names, Oct 2026 format without `-module`)
+
+const NEW_UI_BLOCK = (sha: string, path: string, blobHref: string) => `
+  <div id="diff-${sha}" class="diffTargetable__jbrCub diff__GZFl4M">
+    <div class="diff-file-header__NEtRX">
+      <div class="file-path-section__ZYYNNI">
+        <h3 class="file-name__8GKEHg">
+          <a class="Link--primary" href="#diff-${sha}">‎${path}‎</a>
+        </h3>
+        <button aria-label="Not Viewed" aria-pressed="false" class="prc-Button-ButtonBase-9n-Xk">Viewed</button>
+      </div>
+      <a href="${blobHref}">View file</a>
+    </div>
+    <div id="diff-${sha}R1">line</div>
+  </div>
+`;
+
+it('detects new-UI headers whose class names lack the -module infix', () => {
+  document.body.innerHTML =
+    NEW_UI_BLOCK('aaaa1111', 'docs/index.html', '/owner/repo/blob/abc/docs/index.html') +
+    NEW_UI_BLOCK('bbbb2222', 'src/app.ts', '/owner/repo/blob/abc/src/app.ts');
+  const headers = findHtmlFileHeaders();
+  expect(headers).toHaveLength(1);
+  expect(headers[0].className).toBe('diff-file-header__NEtRX');
+  expect(getFilePath(headers[0])).toBe('docs/index.html');
+});
+
+it('still detects the previous new-UI class name format', () => {
+  document.body.innerHTML = `
+    <div id="diff-cccc3333">
+      <div class="DiffFileHeader-module__diff-file-header--NEtRX">
+        <div class="DiffFileHeader-module__file-path-section--ZYYNNI">
+          <h3 class="DiffFileHeader-module__file-name--8GKEHg"><a href="#diff-cccc3333"><code>page.html</code></a></h3>
+        </div>
+      </div>
+    </div>
+  `;
+  const headers = findHtmlFileHeaders();
+  expect(headers).toHaveLength(1);
+  expect(getFilePath(headers[0])).toBe('page.html');
+});
+
+it('falls back to the diff block <h3> structure when no known class matches', () => {
+  document.body.innerHTML = `
+    <div id="diff-comparison-viewer-container">
+      <div id="diff-dddd4444" class="x__1">
+        <div class="y__2">
+          <div class="z__3">
+            <h3 class="w__4"><a href="#diff-dddd4444">index.html</a></h3>
+          </div>
+        </div>
+        <div id="diff-dddd4444R1">line</div>
+      </div>
+      <div id="diff-eeee5555" class="x__1">
+        <div class="y__2">
+          <div class="z__3">
+            <h3 class="w__4"><a href="#diff-eeee5555">main.css</a></h3>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  const headers = findHtmlFileHeaders();
+  expect(headers).toHaveLength(1);
+  // The header handed out is the <h3>'s wrapper row (file-path-section)
+  expect(headers[0].className).toBe('z__3');
+  expect(getFilePath(headers[0])).toBe('index.html');
+});
+
+it('yields a single header per diff block even when nested elements share the class substring', () => {
+  document.body.innerHTML = `
+    <div id="diff-ffff6666">
+      <div class="diff-file-header__NEtRX">
+        <div class="diff-file-header-inner__abc">
+          <h3 class="file-name__8GKEHg"><a href="#diff-ffff6666">index.html</a></h3>
+        </div>
+      </div>
+    </div>
+  `;
+  const headers = findHtmlFileHeaders();
+  expect(headers).toHaveLength(1);
+  expect(headers[0].className).toBe('diff-file-header__NEtRX');
+});
+
+it('addPreviewButtons places buttons in the new-UI file-path section', () => {
+  history.replaceState({}, '', '/owner/repo/pull/1/changes');
+  document.body.innerHTML = NEW_UI_BLOCK(
+    'aaaa1111',
+    'docs/index.html',
+    '/owner/repo/blob/abc/docs/index.html'
+  );
+  addPreviewButtons('pr-files');
+  const section = document.querySelector('.file-path-section__ZYYNNI')!;
+  expect(section.querySelectorAll('.html-preview-btn')).toHaveLength(3);
+  // Re-running must not duplicate buttons
+  addPreviewButtons('pr-files');
+  expect(document.querySelectorAll('.html-preview-btn')).toHaveLength(3);
+  history.replaceState({}, '', '/');
+});
+
+it('addPreviewButtons works through the structural fallback (no blob link, branch from PR header)', () => {
+  history.replaceState({}, '', '/owner/repo/pull/1/changes');
+  document.body.innerHTML = `
+    <a class="prc-BranchName-BranchName-xyz" href="/owner/repo/tree/main">main</a>
+    <a class="prc-BranchName-BranchName-xyz" href="/owner/repo/tree/feature/x">feature/x</a>
+    <div id="diff-dddd4444" class="x__1">
+      <div class="y__2">
+        <div class="z__3">
+          <h3 class="w__4"><a href="#diff-dddd4444">index.html</a></h3>
+        </div>
+      </div>
+    </div>
+  `;
+  addPreviewButtons('pr-files');
+  const row = document.querySelector('.z__3')!;
+  expect(row.querySelectorAll('.html-preview-btn')).toHaveLength(3);
+  expect(getRawUrl(row)).toBe(`${location.origin}/owner/repo/raw/feature/x/index.html`);
+  history.replaceState({}, '', '/');
+});
