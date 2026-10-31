@@ -5,17 +5,34 @@ import { addPreviewButtonToHeader } from './preview-button';
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
 
 const FILE_HEADER_SELECTORS = [
-  // New GitHub UI (CSS modules)
-  '[class*="DiffFileHeader-module__diff-file-header"]',
+  // New GitHub UI (CSS modules). GitHub's hashed class names have used two
+  // shapes so far: `DiffFileHeader-module__diff-file-header--<hash>` and,
+  // since Oct 2026, `diff-file-header__<hash>` (the `-module` infix was
+  // dropped). A substring match on the stable local name covers both.
+  '[class*="diff-file-header"]',
   // Legacy selectors
   '[data-tagsearch-path]',
   '.file-header[data-path]',
   '.file-header',
 ] as const;
 
+/**
+ * Structural fallback for the new GitHub UI, independent of hashed class
+ * names: every diff block is a `div[id^="diff-"]` whose header holds an
+ * `<h3>` with the file-name link (`<a href="#diff-<sha>">`). The header
+ * element we hand out is the `<h3>`'s wrapper row so `insertPreviewButton`
+ * can append buttons next to the file name.
+ */
+const DIFF_BLOCK_HEADING_SELECTOR = '[id^="diff-"] h3';
+const DIFF_BLOCK_SELECTOR = '[id^="diff-"]';
+
 const FILE_PATH_EXTRACTORS = [
   // New GitHub UI: <h3 class="...file-name..."><a><code>path/to/file</code></a></h3>
-  (el: Element) => el.querySelector('[class*="file-name"] code')?.textContent?.replace(/\u200E/g, '').trim() ?? null,
+  (el: Element) => cleanPathText(el.querySelector('[class*="file-name"] code')?.textContent),
+  // New GitHub UI without <code>: <h3><a href="#diff-<sha>">path/to/file</a></h3>.
+  // `textContent` (not `innerText`) so off-screen blocks rendered with
+  // `content-visibility: auto` still yield the path.
+  (el: Element) => cleanPathText(el.querySelector('h3 a[href^="#diff-"], h3 code')?.textContent),
   // Legacy extractors
   (el: Element) => el.getAttribute('data-tagsearch-path'),
   (el: Element) => el.getAttribute('data-path'),
@@ -23,20 +40,55 @@ const FILE_PATH_EXTRACTORS = [
 ] as const;
 
 /**
+ * Normalize file-name text copied from the DOM: strip LRM marks GitHub
+ * inserts around paths and surrounding whitespace.
+ * @param text - Raw text content, possibly null/undefined
+ * @returns Cleaned path, or null when empty
+ */
+function cleanPathText(text: string | null | undefined): string | null {
+  const cleaned = text?.replace(/\u200E/g, '').trim();
+  return cleaned ? cleaned : null;
+}
+
+/**
  * Find all file headers in the PR Files changed tab that correspond to HTML files.
  * @returns Array of header elements for .html files
  */
 export function findHtmlFileHeaders(): Element[] {
   const headers: Element[] = [];
+  const seenBlocks = new Set<Element>();
+
+  // One header per diff block: `querySelectorAll` yields document order, so
+  // the outermost matching element of a block wins and nested descendants
+  // that happen to share the class substring are ignored.
+  const addHeader = (el: Element): void => {
+    if (headers.includes(el)) return;
+    const block = el.closest(DIFF_BLOCK_SELECTOR);
+    if (block && seenBlocks.has(block)) return;
+    const path = getFilePath(el);
+    if (!path || !isHtmlFile(path)) return;
+    headers.push(el);
+    if (block) seenBlocks.add(block);
+  };
+
   for (const selector of FILE_HEADER_SELECTORS) {
-    const elements = document.querySelectorAll(selector);
-    for (const el of elements) {
-      const path = getFilePath(el);
-      if (path && isHtmlFile(path) && !headers.includes(el)) {
-        headers.push(el);
-      }
+    for (const el of document.querySelectorAll(selector)) {
+      addHeader(el);
     }
   }
+
+  // Structural fallback: diff blocks whose header was not matched by any
+  // class/attribute selector (e.g. after GitHub renames its CSS modules).
+  for (const heading of document.querySelectorAll(DIFF_BLOCK_HEADING_SELECTOR)) {
+    const block = heading.closest(DIFF_BLOCK_SELECTOR);
+    if (!block || seenBlocks.has(block)) continue;
+    const parent = heading.parentElement;
+    const header =
+      heading.closest('[class*="diff-file-header"]') ??
+      (parent && parent !== block ? parent : heading);
+    addHeader(header);
+  }
+
   return headers;
 }
 

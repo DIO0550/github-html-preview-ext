@@ -146,3 +146,6 @@ vite.config.ts.timestamp-*
 .playwright-cli
 playwright-cli
 .DS_Store
+
+# Claude Code session workspace (local tooling state)
+.claude/plugin-workspace/
