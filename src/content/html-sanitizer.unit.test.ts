@@ -127,3 +127,54 @@ it('returns valid HTML when input has no external resources', () => {
   expect(result).toContain('Safe');
   expect(result).toContain('OK');
 });
+
+// --- SEC-02: CSP / Referrer / Bypass vector hardening ---
+
+it('injects strict Content-Security-Policy and no-referrer meta tags', () => {
+  const html = '<!DOCTYPE html><html><head><title>Doc</title></head><body>Hi</body></html>';
+  const result = sanitizeHtml(html);
+  expect(result).toContain('http-equiv="Content-Security-Policy"');
+  expect(result).toContain("connect-src 'none'");
+  expect(result).toContain("form-action 'none'");
+  expect(result).toContain('<meta name="referrer" content="no-referrer"');
+  expect(result).toMatch(/^<!DOCTYPE html>/i);
+});
+
+it('removes protocol-relative // external URLs that resolve against <base>', () => {
+  const html = '<html><body><script src="//evil.com/x.js"></script><img src="//evil.com/b.png"></body></html>';
+  const result = sanitizeHtml(html);
+  expect(result).not.toContain('evil.com');
+});
+
+it('removes elements with external srcset candidates', () => {
+  const html = '<html><body><img srcset="local.png 1x, https://evil.com/2x.png 2x"></body></html>';
+  const result = sanitizeHtml(html);
+  expect(result).not.toContain('evil.com');
+  expect(result).not.toContain('<img');
+});
+
+it('strips ping attributes, external form actions, and external video posters', () => {
+  const html = `
+    <html><body>
+      <a href="#x" ping="https://evil.com/ping">link</a>
+      <form action="https://evil.com/collect"><button formaction="//evil.com/alt">Go</button></form>
+      <video poster="https://evil.com/poster.jpg"></video>
+    </body></html>
+  `;
+  const result = sanitizeHtml(html);
+  expect(result).not.toContain('evil.com');
+  expect(result).not.toContain('ping=');
+});
+
+it('strips external url() and @import from <style> blocks and inline style attributes', () => {
+  const html = `
+    <html><head>
+      <style>@import "https://evil.com/leak.css"; body { background: url(//evil.com/bg.png); }</style>
+    </head><body style="background-image: url('https://evil.com/inline.png'); color: red;">
+      <svg><image href="https://evil.com/svg.png" /></svg>
+    </body></html>
+  `;
+  const result = sanitizeHtml(html);
+  expect(result).not.toContain('evil.com');
+  expect(result).toContain('color: red');
+});
