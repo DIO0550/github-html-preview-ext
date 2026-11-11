@@ -212,3 +212,106 @@ it('falls back to a new tab when open-preview-tab existingTabId is non-integer',
   expect(chrome.tabs.create).toHaveBeenCalled();
   expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ tabId: 33 }));
 });
+
+// fetch-html URL & whitelist validation (SEC-01)
+
+it('allows fetch-html for whitelisted GitHub raw URL', async () => {
+  vi.mocked(chrome.storage.sync.get).mockResolvedValue({
+    allowedRepos: ['owner/repo'],
+    autoPreview: false,
+    defaultZoom: 100,
+    enableJavaScript: true,
+  });
+  vi.mocked(fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    url: 'https://raw.githubusercontent.com/owner/repo/main/index.html',
+    text: () => Promise.resolve('<html><body>safe</body></html>'),
+  } as Response);
+
+  const sendResponse = vi.fn();
+  listener(
+    { type: 'fetch-html', url: 'https://github.com/owner/repo/raw/main/index.html' },
+    sender,
+    sendResponse
+  );
+
+  await vi.waitFor(() => {
+    expect(sendResponse).toHaveBeenCalledWith({
+      html: '<html><body>safe</body></html>',
+      error: null,
+    });
+  });
+});
+
+it('blocks fetch-html for external non-GitHub URLs without calling fetch', async () => {
+  vi.mocked(fetch).mockReset();
+  const sendResponse = vi.fn();
+  listener(
+    { type: 'fetch-html', url: 'https://evil.example/owner/repo/raw/main/index.html' },
+    sender,
+    sendResponse
+  );
+
+  await vi.waitFor(() => {
+    expect(sendResponse).toHaveBeenCalledWith({
+      html: null,
+      error: 'Blocked disallowed URL',
+    });
+  });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('blocks fetch-html for repositories outside allowedRepos', async () => {
+  vi.mocked(fetch).mockReset();
+  vi.mocked(chrome.storage.sync.get).mockResolvedValue({
+    allowedRepos: ['trusted/repo'],
+    autoPreview: false,
+    defaultZoom: 100,
+    enableJavaScript: true,
+  });
+
+  const sendResponse = vi.fn();
+  listener(
+    { type: 'fetch-html', url: 'https://github.com/other/private-repo/raw/main/index.html' },
+    sender,
+    sendResponse
+  );
+
+  await vi.waitFor(() => {
+    expect(sendResponse).toHaveBeenCalledWith({
+      html: null,
+      error: 'Repository is not in whitelist',
+    });
+  });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('blocks fetch-html when redirect lands on a disallowed host', async () => {
+  vi.mocked(chrome.storage.sync.get).mockResolvedValue({
+    allowedRepos: ['owner/repo'],
+    autoPreview: false,
+    defaultZoom: 100,
+    enableJavaScript: true,
+  });
+  vi.mocked(fetch).mockResolvedValue({
+    ok: true,
+    status: 200,
+    url: 'https://github.com/login?return_to=...',
+    text: () => Promise.resolve('<html>login</html>'),
+  } as Response);
+
+  const sendResponse = vi.fn();
+  listener(
+    { type: 'fetch-html', url: 'https://github.com/owner/repo/raw/main/index.html' },
+    sender,
+    sendResponse
+  );
+
+  await vi.waitFor(() => {
+    expect(sendResponse).toHaveBeenCalledWith({
+      html: null,
+      error: 'Blocked disallowed redirect URL',
+    });
+  });
+});

@@ -307,3 +307,34 @@ it('addPreviewButtons works through the structural fallback (no blob link, branc
   expect(getRawUrl(row)).toBe(`${location.origin}/owner/repo/raw/feature/x/index.html`);
   history.replaceState({}, '', '/');
 });
+
+it('ignores /blob/ links posted inside inline PR review comments', () => {
+  history.replaceState({}, '', '/owner/repo/pull/1/changes');
+  document.body.innerHTML = `
+    <a class="prc-BranchName-BranchName-xyz" href="/owner/repo/tree/main">main</a>
+    <a class="prc-BranchName-BranchName-xyz" href="/owner/repo/tree/feature/x">feature/x</a>
+    <div id="diff-aaaa1111" class="diffTargetable__jbrCub">
+      <div class="diff-file-header__NEtRX">
+        <div class="file-path-section__ZYYNNI">
+          <h3 class="file-name__8GKEHg"><a href="#diff-aaaa1111">docs/index.html</a></h3>
+        </div>
+      </div>
+      <div class="review-comment">
+        <a href="https://evil.example/attacker/repo/blob/main/payload.html">malicious link</a>
+        <a href="https://github.com/other-org/secret-repo/blob/main/leak.html">cross-repo link</a>
+      </div>
+    </div>
+  `;
+  const [header] = findHtmlFileHeaders();
+  expect(getRawUrl(header)).toBe(`${location.origin}/owner/repo/raw/feature/x/docs/index.html`);
+  history.replaceState({}, '', '/');
+});
+
+it('rejects cross-repository blob links even inside a header element', () => {
+  history.replaceState({}, '', '/owner/repo/pull/1/files');
+  const el = document.createElement('div');
+  el.className = 'file-header';
+  el.innerHTML = '<a href="https://github.com/other/secret/blob/main/index.html">View file</a>';
+  expect(getRawUrl(el)).toBeNull();
+  history.replaceState({}, '', '/');
+});
