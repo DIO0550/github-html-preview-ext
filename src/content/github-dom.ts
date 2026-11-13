@@ -1,5 +1,5 @@
 import type { PageType } from './types';
-import { isHtmlFile, convertBlobToRawUrl, isDiffPage } from './url-utils';
+import { isHtmlFile, convertBlobToRawUrl, extractOwnerRepo, isDiffPage } from './url-utils';
 import { addPreviewButtonToHeader } from './preview-button';
 
 const PREVIEW_BUTTON_SELECTOR = '.html-preview-btn';
@@ -106,30 +106,62 @@ export function getFilePath(header: Element): string | null {
 }
 
 /**
+ * Validate that a raw URL stays on the current origin (or `https://github.com`)
+ * and targets the current page's repository when the page URL contains one.
+ * @param rawUrl - Candidate raw URL
+ * @returns Validated raw URL, or null when cross-origin or cross-repository
+ */
+function validateSameRepoRawUrl(rawUrl: string | null): string | null {
+  if (!rawUrl) {
+    return null;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl, location.origin);
+  } catch {
+    return null;
+  }
+
+  const isTrustedOrigin =
+    parsed.origin === 'https://github.com' || parsed.origin === location.origin;
+  if (!isTrustedOrigin) {
+    return null;
+  }
+
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  if (segments.length < 5 || segments[2] !== 'raw') {
+    return null;
+  }
+
+  const urlRepo = `${segments[0]}/${segments[1]}`.toLowerCase();
+  const pageRepo = extractOwnerRepo(location.pathname)?.toLowerCase() ?? null;
+  if (pageRepo && urlRepo !== pageRepo) {
+    return null;
+  }
+
+  return parsed.toString();
+}
+
+/**
  * Get the raw URL from a file header.
- * Tries the legacy "View file" blob link first, then falls back to
- * constructing a raw URL from the commit SHA in the URL (commit views) or
- * the PR's head ref and file path.
+ * Checks only the file header region (never the diff table or inline review
+ * comments inside `div[id^="diff-"]`) for a "View file" blob link, then falls
+ * back to constructing a raw URL from the commit SHA in the URL (commit views)
+ * or the PR's head ref and file path.
  * @param header - File header DOM element
  * @returns Raw URL string, or null if not determinable
  */
 export function getRawUrl(header: Element): string | null {
-  // Look for a blob link in the header itself
-  const headerLink = header.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
-  if (headerLink) return convertBlobToRawUrl(headerLink.href);
-
-  // New GitHub UI: "View file" link lives in the kebab menu inside the diff container
-  const diffContainer = header.closest('[id^="diff-"]') ?? header.parentElement;
-  if (diffContainer) {
-    const viewFileLink = diffContainer.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
-    if (viewFileLink) return convertBlobToRawUrl(viewFileLink.href);
+  const headerRoot = header.closest('[class*="diff-file-header"], .file-header') ?? header;
+  const headerLink = headerRoot.querySelector('a[href*="/blob/"]') as HTMLAnchorElement | null;
+  if (headerLink) {
+    return validateSameRepoRawUrl(convertBlobToRawUrl(headerLink.href, location.origin));
   }
 
   const filePath = getFilePath(header);
-  if (!filePath) return null;
-  // Commit views pin the file to the commit SHA in the URL — check this
-  // before the PR head branch so a PR Commits-tab page previews the file
-  // as of that commit, not the branch tip.
+  if (!filePath) {
+    return null;
+  }
   return buildRawUrlFromCommitPage(filePath) ?? buildRawUrlFromPr(filePath);
 }
 
@@ -187,15 +219,17 @@ export function isAlreadyProcessed(header: Element): boolean {
 
 /**
  * Get the raw URL from the "Raw" button on a blob file page.
- * @returns Raw URL string, or null if no Raw button found
+ * Validates that the URL stays on the expected origin and repository.
+ * @returns Raw URL string, or null if no valid Raw button found
  */
 export function getBlobPageRawUrl(): string | null {
   const rawButton = document.querySelector(
     'a[data-testid="raw-button"], a.btn-sm[href*="/raw/"]'
   ) as HTMLAnchorElement | null;
-  if (!rawButton) return null;
-  // Use .href property for absolute URL
-  return rawButton.href || null;
+  if (!rawButton || !rawButton.href) {
+    return null;
+  }
+  return validateSameRepoRawUrl(rawButton.href);
 }
 
 /**

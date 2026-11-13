@@ -1,5 +1,5 @@
 import { it, expect, test } from 'vitest';
-import { convertBlobToRawUrl, isHtmlFile, injectBaseTag, getPageType, extractOwnerRepo, matchesWhitelist, isDiffPage } from './url-utils';
+import { convertBlobToRawUrl, parseAllowedRawUrlRepo, isHtmlFile, injectBaseTag, getPageType, extractOwnerRepo, matchesWhitelist, isDiffPage } from './url-utils';
 
 // convertBlobToRawUrl
 
@@ -24,6 +24,33 @@ test.each([
 
 it('returns null for URL without /blob/', () => {
   expect(convertBlobToRawUrl('https://github.com/owner/repo/tree/main')).toBeNull();
+});
+
+test.each([
+  ['external origin', 'https://evil.com/owner/repo/blob/main/index.html'],
+  ['http downgrade', 'http://github.com/owner/repo/blob/main/index.html'],
+  ['javascript scheme', 'javascript://github.com/owner/repo/blob/main/index.html'],
+  ['missing repo segment', 'https://github.com/only-owner/blob/main/index.html'],
+])('convertBlobToRawUrl rejects %s', (_label, input) => {
+  expect(convertBlobToRawUrl(input)).toBeNull();
+});
+
+test.each([
+  ['github.com raw URL', 'https://github.com/owner/repo/raw/main/dir/index.html', 'owner/repo'],
+  ['raw.githubusercontent.com URL', 'https://raw.githubusercontent.com/owner/repo/main/index.html', 'owner/repo'],
+])('parseAllowedRawUrlRepo extracts repo from %s', (_label, input, expected) => {
+  expect(parseAllowedRawUrlRepo(input)).toBe(expected);
+});
+
+test.each([
+  ['external domain', 'https://evil.com/owner/repo/raw/main/index.html'],
+  ['http scheme', 'http://github.com/owner/repo/raw/main/index.html'],
+  ['github non-raw path', 'https://github.com/owner/repo/blob/main/index.html'],
+  ['github api path', 'https://github.com/settings/tokens'],
+  ['raw.githubusercontent too short', 'https://raw.githubusercontent.com/owner/repo/main'],
+  ['malformed URL', 'not-a-url'],
+])('parseAllowedRawUrlRepo rejects %s', (_label, input) => {
+  expect(parseAllowedRawUrlRepo(input)).toBeNull();
 });
 
 // isHtmlFile

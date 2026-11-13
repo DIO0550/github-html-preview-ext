@@ -107,3 +107,17 @@ it('uses Object.defineProperty with configurable: false to prevent re-override',
   expect(script).toContain('Object.defineProperty');
   expect(script).toContain('configurable');
 });
+
+it('blocks RTCPeerConnection, Element.prototype.setAttribute external URLs, and form.submit', () => {
+  const script = createSecuritySandboxScript();
+  expect(script).toContain('RTCPeerConnection');
+  expect(script).toContain('setAttribute');
+  expect(script).toContain('HTMLFormElement');
+});
+
+it('does not mistake <header> for <head> when <head> is omitted', () => {
+  const html = '<header>Top banner</header><p>Body</p>';
+  const result = injectSecuritySandbox(html);
+  expect(result.startsWith('<head><script>')).toBe(true);
+  expect(result).toContain('<header>Top banner</header>');
+});

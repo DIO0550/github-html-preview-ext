@@ -12,7 +12,7 @@ export function createSecuritySandboxScript(): string {
   return `(function() {
   var warn = console.warn.bind(console, '[HTML Preview Sandbox]');
 
-  // A. Network API blocking
+  // A. Network & WebRTC API blocking
   Object.defineProperty(window, 'fetch', {
     value: function() { warn('fetch is blocked'); return Promise.reject(new Error('fetch is blocked by sandbox')); },
     writable: false, configurable: false
@@ -33,6 +33,16 @@ export function createSecuritySandboxScript(): string {
     writable: false, configurable: false
   });
 
+  var rtcNames = ['RTCPeerConnection', 'webkitRTCPeerConnection', 'mozRTCPeerConnection'];
+  for (var r = 0; r < rtcNames.length; r++) {
+    if (rtcNames[r] in window) {
+      Object.defineProperty(window, rtcNames[r], {
+        value: function() { warn('WebRTC is blocked'); throw new Error('WebRTC is blocked by sandbox'); },
+        writable: false, configurable: false
+      });
+    }
+  }
+
   Object.defineProperty(navigator, 'sendBeacon', {
     value: function() { warn('sendBeacon is blocked'); return false; },
     writable: false, configurable: false
@@ -50,18 +60,24 @@ export function createSecuritySandboxScript(): string {
   });
 
   // C. Dynamic resource creation blocking
+  function isExternal(val) {
+    if (typeof val !== 'string') return false;
+    var v = val.replace(/[\\u0000-\\u0020]+/g, '').toLowerCase();
+    return v.indexOf('http://') === 0 || v.indexOf('https://') === 0 || v.indexOf('//') === 0;
+  }
+
   function blockExternalUrl(proto, prop) {
     var descriptor = Object.getOwnPropertyDescriptor(proto, prop);
     var originalSet = descriptor && descriptor.set;
     Object.defineProperty(proto, prop, {
       get: descriptor && descriptor.get ? descriptor.get : function() { return ''; },
       set: function(value) {
-        if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+        if (isExternal(value)) {
           warn(prop + ' assignment to external URL blocked: ' + value);
           return;
         }
         if (originalSet) { originalSet.call(this, value); }
-        else { this.setAttribute(prop, value); }
+        else { Element.prototype.setAttribute.call(this, prop, value); }
       },
       configurable: false
     });
@@ -71,6 +87,27 @@ export function createSecuritySandboxScript(): string {
   blockExternalUrl(HTMLScriptElement.prototype, 'src');
   blockExternalUrl(HTMLLinkElement.prototype, 'href');
   blockExternalUrl(HTMLIFrameElement.prototype, 'src');
+
+  var origSetAttribute = Element.prototype.setAttribute;
+  var urlAttrs = { src: true, href: true, srcset: true, data: true, poster: true, action: true, formaction: true, ping: true };
+  Object.defineProperty(Element.prototype, 'setAttribute', {
+    value: function(name, value) {
+      var lower = String(name).toLowerCase();
+      if (lower === 'ping' || (urlAttrs[lower] && isExternal(String(value)))) {
+        warn('setAttribute(' + name + ') to external URL blocked: ' + value);
+        return;
+      }
+      return origSetAttribute.call(this, name, value);
+    },
+    writable: false, configurable: false
+  });
+
+  if (typeof HTMLFormElement !== 'undefined') {
+    Object.defineProperty(HTMLFormElement.prototype, 'submit', {
+      value: function() { warn('form.submit is blocked'); },
+      writable: false, configurable: false
+    });
+  }
 
   // D. alert/confirm/prompt blocking
   Object.defineProperty(window, 'alert', {
@@ -141,13 +178,12 @@ export function createSecuritySandboxScript(): string {
  */
 export function injectSecuritySandbox(html: string): string {
   const script = `<script>${createSecuritySandboxScript()}</script>`;
-  const headMatch = html.match(/<head[^>]*>/i);
+  const headMatch = html.match(/<head(?:\s[^>]*)?>/i);
   if (headMatch) {
     const insertPos = html.indexOf(headMatch[0]) + headMatch[0].length;
     return html.slice(0, insertPos) + script + html.slice(insertPos);
   }
-  // No <head> tag — insert before <body> or at the start
-  const bodyMatch = html.match(/<body[^>]*>/i);
+  const bodyMatch = html.match(/<body(?:\s[^>]*)?>/i);
   if (bodyMatch) {
     const insertPos = html.indexOf(bodyMatch[0]);
     return html.slice(0, insertPos) + '<head>' + script + '</head>' + html.slice(insertPos);

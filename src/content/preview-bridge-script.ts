@@ -62,12 +62,12 @@ export function createPreviewBridgeScript(): string {
  */
 export function injectPreviewBridge(html: string): string {
   const script = `<script>${createPreviewBridgeScript()}</script>`;
-  const headMatch = html.match(/<head[^>]*>/i);
+  const headMatch = html.match(/<head(?:\s[^>]*)?>/i);
   if (headMatch) {
     const insertPos = html.indexOf(headMatch[0]) + headMatch[0].length;
     return html.slice(0, insertPos) + script + html.slice(insertPos);
   }
-  const bodyMatch = html.match(/<body[^>]*>/i);
+  const bodyMatch = html.match(/<body(?:\s[^>]*)?>/i);
   if (bodyMatch) {
     const insertPos = html.indexOf(bodyMatch[0]);
     return html.slice(0, insertPos) + '<head>' + script + '</head>' + html.slice(insertPos);

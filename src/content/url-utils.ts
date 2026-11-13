@@ -1,12 +1,80 @@
 import type { PageType } from './types';
 
+const ALLOWED_RAW_HOSTS = new Set(['github.com', 'raw.githubusercontent.com']);
+
+/**
+ * Extract the `"owner/repo"` pair from a GitHub or raw.githubusercontent.com
+ * raw URL. Validates the protocol (`https:`), hostname, and path structure.
+ * @param rawUrl - Absolute URL string to inspect
+ * @returns `"owner/repo"` when valid, or null when disallowed / malformed
+ */
+export function parseAllowedRawUrlRepo(rawUrl: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== 'https:' || !ALLOWED_RAW_HOSTS.has(parsed.hostname)) {
+    return null;
+  }
+
+  const segments = parsed.pathname.split('/').filter(Boolean);
+  if (parsed.hostname === 'github.com') {
+    if (segments.length < 5 || segments[2] !== 'raw') {
+      return null;
+    }
+    return `${segments[0]}/${segments[1]}`;
+  }
+
+  if (segments.length < 4) {
+    return null;
+  }
+  return `${segments[0]}/${segments[1]}`;
+}
+
 /**
  * Convert a GitHub blob URL to a raw URL by replacing `/blob/` with `/raw/`.
+ * Rejects non-GitHub hosts, non-HTTPS protocols (except relative paths and
+ * test-environment `location.origin`), and URLs whose path structure does not
+ * follow `/<owner>/<repo>/blob/<ref>/<path>`.
  * @param url - GitHub blob URL (absolute or relative)
- * @returns Raw URL, or null if the URL does not contain `/blob/`
+ * @param allowedOrigin - Optional current page origin permitted alongside `https://github.com`
+ * @returns Raw URL, or null if the URL is not a valid GitHub blob URL
  */
-export function convertBlobToRawUrl(url: string): string | null {
-  if (!url.includes('/blob/')) return null;
+export function convertBlobToRawUrl(url: string, allowedOrigin?: string): string | null {
+  if (!url.includes('/blob/')) {
+    return null;
+  }
+
+  if (url.startsWith('/')) {
+    const match = /^\/([^/]+\/[^/]+)\/blob\/(.+)$/.exec(url);
+    if (!match) {
+      return null;
+    }
+    return `/${match[1]}/raw/${match[2]}`;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  const isTrustedOrigin =
+    parsed.origin === 'https://github.com' ||
+    (allowedOrigin !== undefined && parsed.origin === allowedOrigin);
+  if (!isTrustedOrigin) {
+    return null;
+  }
+
+  const match = /^\/([^/]+\/[^/]+)\/blob\/(.+)$/.exec(parsed.pathname);
+  if (!match) {
+    return null;
+  }
+
   return url.replace('/blob/', '/raw/');
 }
 
